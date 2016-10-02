@@ -223,9 +223,15 @@ int main()
 	}
 
 	uint8_t b;
+	uint16_t w;
 	b = 0x09; //issue bus reset, keep everything disabled and f!exp high
 	FPGAComm_CopyToFPGA(0x4c00, (void*)&b, 1);
 
+	//center the image horizontally, vertical is already good.
+	w = 9;
+	FPGAComm_CopyToFPGA(0x7044, (void*)&w, 2);
+	w = 60;
+	FPGAComm_CopyToFPGA(0x7046, (void*)&w, 2);
 
 
 	usleep(10000);
