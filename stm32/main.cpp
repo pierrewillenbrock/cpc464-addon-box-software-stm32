@@ -140,6 +140,112 @@ void SysClk_Setup() {
 	RCC_HSICmd(DISABLE);
 }
 
+/* FPGA memory map:
+   0x0000 - 0x3fff : Expansion ROM source
+   0x4000 -        : FDC registers?
+   0x4c00          : CPC control:
+                     bit 0: bus reset,
+                     bit 1: rom enable,
+                     bit 2: fdc enable,
+                     bit 3: f!exp(inverted,
+                            i.E. 1 is f!exp high, i.E. deactivated)
+   0x6000 - 0x6fff : graphics memory, uint16le with 9 valid bits each
+                     Map bytes(9 bit in this case) are:
+                      bit 5:0 are high bits (10:5) of tile address,
+                      bit 8:6 are the palette selection bits
+                     Tiles are 8x4 bytes:
+                      bit 3:0 are the color index of one pixel
+                      bit 7:4 are the color index of the other pixel
+                      bit 8 selects the alternative palette mode
+   0x6f00 - 0x6fff : The highest range is used for palette data, but can be
+                     used for tiles or map data as well. The palette data forms
+                     8 palettes of 16 full color indices(5 bits) and
+                     8 palettes of 16 short color indices(4 bits)
+                     The palette bytes are used this way:
+                     bits 4:0 contain a full color index, used when
+                              tile bit 8 is 0
+                     bits 8:4 contain a short color index, used when
+                              tile bit 8 is 1
+
+  the primary colors are:
+         (colors available to full and short color indexes)
+	0:	"000000", -- transparent
+	1:	"000000", -- black
+	2:	"000011", -- bright blue
+	3:	"001100", -- bright green
+	4:	"110000", -- bright red
+	5:	"001111", -- bright cyan
+	6:	"111100", -- bright yellow
+	7:	"110011", -- bright magenta
+	8:	"111111", -- white
+	9:	"010101", -- gray
+	10:	"000001", -- dark blue
+	11:	"000100", -- dark green
+	12:	"010000", -- dark red
+	13:	"000101", -- dark cyan
+	14:	"010100", -- dark yellow
+	15:	"010001", -- dark magenta
+         (colors available only to full color indexes)
+	16:	"000111", -- greenish blue
+	17:	"001110", -- blueish green
+	18:	"011100", -- redish green
+	19:	"110100", -- greenish red (orange?)
+	20:	"110001", -- blueish red
+	21:	"010011", -- redish blue
+	22:	"010111", -- blueish gray
+	23:	"011101", -- greenish gray
+	24:	"110101", -- redish gray
+	25:	"011111", -- cyanish gray
+	26:	"111101", -- yellowish gray
+	27:	"110111", -- magentaish gray
+	28:	"000000", -- black
+	29:	"000011", -- bright blue
+	30:	"001100", -- bright green
+	31:	"110000" -- bright red
+
+   0x7000 - 0x700f : spite0
+   0x7000          : sprite_hpos 0:7
+   0x7001          : sprite_hpos 10:8
+   0x7002          : sprite_vpos 0:7
+   0x7003          : sprite_vpos 10:8
+   0x7004          : ram_base 0:7     base of map data mapping to tiles
+   0x7005          : ram_base 10:8
+   0x7006          : hsize in tiles
+   0x7007          : vsize in tiles
+   0x7008          : hpitch in tiles
+   0x7009          : bit0: double sized pixels
+   0x7010 - 0x701f : spite1
+   0x7020 - 0x702f : spite2
+   0x7030 - 0x703f : spite3
+   0x7040          : vsync_start 0:7  default: 300
+   0x7041          : vsync_start 8:8
+   0x7042          : vsync_end 0:7    default: 311
+   0x7043          : vsync_end 8:8
+   0x7044          : hsync_start 0:7  default: 900
+   0x7045          : hsync_start 9:8
+   0x7046          : hsync_end 0:7    default: 1023
+   0x7047          : hsync_end 9:8
+   0x7048          : lpen_vpos 0:7
+   0x7049          : lpen_vpos 8:8 in bit 0:0, bit7: lpen active
+   0x704a          : lpen_hpos 0:7
+   0x704b          : lpen_hpos 9:8
+   0x704c          : cursor_force_high (color bits getting forced high when the
+                                        fcursor signal is active)
+   0x704d          : cursor_force_low  (color bits getting forced low when the
+                                        fcursor signal is active)
+   0x7ffx - ?
+ */
+
+struct sprite_info {
+	uint16_t hpos;
+	uint16_t vpos;
+	uint16_t map_addr;
+	uint8_t hsize;
+	uint8_t vsize;
+	uint8_t hpitch;
+	uint8_t doublesize:1;
+	uint8_t reserved:7;
+} __attribute__((packed));
 
 int initROM() {
 	//first, try to find the ROM file
