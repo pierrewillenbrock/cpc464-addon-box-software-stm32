@@ -1,5 +1,6 @@
 
 #include "timer.h"
+#include <unistd.h>
 #include "irq.h"
 
 #include <map>
@@ -65,6 +66,20 @@ void Timer_Cancel(uint32_t handle) {
 			break;
 		}
 	}
+}
+
+static void usleep_timer(void *data) {
+  uint32_t *d = (uint32_t*)data;
+  *d = 1;
+}
+
+int usleep(useconds_t usec) {
+  volatile uint32_t d = 0;
+  Timer_Oneshot(usec, usleep_timer, (void*)&d);
+  while(!d) {
+    __WFI();
+  }
+  return 0;
 }
 
 void SysTick_Handler() {

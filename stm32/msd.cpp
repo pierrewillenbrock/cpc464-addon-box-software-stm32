@@ -11,11 +11,12 @@ struct FS_priv {
 struct MSD_priv {
 	MSD_Info *info;
 	std::vector<uint8_t> mbr;
+	MSDReadCommand readCommand;
 	MSD_priv() : info(NULL) {}
 };
 
-static std::deque<FS_priv> fss;
-static std::deque<MSD_priv> msds;
+static std::deque<FS_priv*> fss;
+static std::deque<MSD_priv*> msds;
 
 struct MSD_MSDOS_MBR {
 	char code[446];
@@ -30,8 +31,8 @@ struct MSD_MSDOS_MBR {
 	uint16_t signature;
 } __attribute__((packed));
 
-static void MSD_MBR_read_cmpl(int res, void *data) {
-	MSD_priv *p = (MSD_priv*)data;
+static void MSD_MBR_read_cmpl(int res, MSDReadCommand *command) {
+	MSD_priv *p = container_of(command, MSD_priv, readCommand);
 	if (res == 0) {
 		MSD_MSDOS_MBR *msdos = (MSD_MSDOS_MBR*)p->mbr.data();
 		if (msdos->signature == 0xaa55) {
@@ -42,8 +43,8 @@ static void MSD_MBR_read_cmpl(int res, void *data) {
 				    msdos->partitions[i].type == 0x00)
 					continue;
 				//valid.
-				for(FS_priv & fp : fss) {
-					fp.info->probe_partition(
+				for(FS_priv* & fp : fss) {
+					fp->info->probe_partition(
 						msdos->partitions[i].type,
 						msdos->partitions[i].first_lba,
 						msdos->partitions[i].num_blocks,
@@ -56,26 +57,32 @@ static void MSD_MBR_read_cmpl(int res, void *data) {
 }
 
 void MSD_Register(struct MSD_Info *info) {
-	msds.push_back(MSD_priv());
-	msds.back().info = info;
-	msds.back().mbr.resize(512);
-	msds.back().info->readBlocks(info->data, 0, msds.back().mbr.data(), 1,
-				     MSD_MBR_read_cmpl, &msds.back());
+	MSD_priv *p = new MSD_priv;
+	p->info = info;
+	p->mbr.resize(512);
+	msds.push_back(p);
+	p->readCommand.start_block = 0;
+	p->readCommand.num_blocks = 1;
+	p->readCommand.dst = p->mbr.data();
+	p->readCommand.completion = MSD_MBR_read_cmpl;
+	p->info->readBlocks(info->data, &p->readCommand);
 }
 
 void MSD_Unregister(struct MSD_Info *info) {
-	for(FS_priv & fp : fss)
-		fp.info->remove_msd(info);
+	for(FS_priv* & fp : fss)
+		fp->info->remove_msd(info);
 	for(auto it = msds.begin(); it != msds.end(); it++) {
-		if (it->info == info) {
+		if ((*it)->info == info) {
+			MSD_priv *p = *it;
 			msds.erase(it);
+			delete p;
 			break;
 		}
 	}
 }
 
 void FS_Register(struct Filesystem_Info *info) {
-	FS_priv p;
-	p.info = info;
+	FS_priv *p = new FS_priv;
+	p->info = info;
 	fss.push_back(p);
 }

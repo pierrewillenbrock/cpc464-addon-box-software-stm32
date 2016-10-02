@@ -5,6 +5,10 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <dirent.h>
+#include <string>
+#include <sstream>
+#include <unordered_map>
 
 #include "stm32f4xx_gpio.h"
 #include "stm32f4xx_rcc.h"
@@ -13,6 +17,7 @@
 #include "timer.h"
 #include "sdcard.h"
 #include "fat.h"
+#include "vfs.hpp"
 
 #define LEDR_PIN GPIO_Pin_3
 #define LEDG_PIN GPIO_Pin_2
@@ -20,11 +25,6 @@
 #define LED_GPIO GPIOA
 #define LED_RCC_FUNC RCC_AHB1PeriphClockCmd
 #define LED_RCC RCC_AHB1Periph_GPIOA
-
-static void delay(int count) {
-  volatile int c = count*1000;
-  while(c > 0) c--;
-}
 
 static void LED_Setup() {
 	LED_RCC_FUNC(LED_RCC, ENABLE);
@@ -140,10 +140,26 @@ void SysClk_Setup() {
 	RCC_HSICmd(DISABLE);
 }
 
-void initROM() {
-	int fd = open("/amsdos.rom", O_RDONLY);
+
+int initROM() {
+	//first, try to find the ROM file
+	DIR *dir = opendir("/media");
+	if (!dir)
+		return -1;
+	struct dirent *dent;
+	int fd = -1;
+	while(fd == -1 && (dent = readdir(dir))) {
+		if((dent->d_name[0] == '.' && dent->d_name[1] == '\0') ||
+		   (dent->d_name[0] == '.' && dent->d_name[1] == '.' && dent->d_name[2] == '\0'))
+			continue;
+		std::string path("/media/");
+		path += dent->d_name;
+		path += "/amsdos.rom";
+		fd = open(path.c_str(), O_RDONLY);
+	}
+	closedir(dir);
 	if (fd == -1)
-		return;
+		return -1;
 	char buf1[1024];
 	char buf2[1024];
 	uint16_t addr = 0x0000; //base address of the ROM
@@ -177,23 +193,22 @@ void initROM() {
 		if (res == 0)
 			break;
 		FPGAComm_CopyFromFPGA(buf2, addr, res);
-		if (memcmp(buf1, buf2, res) != 0) {
-			GPIO_ResetBits(LED_GPIO, LEDB_PIN | LEDG_PIN);
-			GPIO_SetBits(LED_GPIO, LEDR_PIN);
-			while(1) {}
-		}
+		assert(memcmp(buf1, buf2, res) == 0);
 		addr += res;
 	}
 	close(fd);
 	//enable here or communicate to main so it can also "fail" there?
+
+	return 0;
 }
 
 int main()
 {
 	LED_Setup();
-
 	SysClk_Setup();
 	Timer_Setup();
+	VFS_Setup();
+
 	FPGAComm_Setup();
 	FAT_Setup();
 	SDcard_Setup();
@@ -211,17 +226,74 @@ int main()
 	b = 0x09; //issue bus reset, keep everything disabled and f!exp high
 	FPGAComm_CopyToFPGA(0x4c00, (void*)&b, 1);
 
-	initROM();
 
-	delay(100);
+
+	usleep(10000);
 	b = 0x08; //release bus reset, keep everything disabled and f!exp high
 	FPGAComm_CopyToFPGA(0x4c00, (void*)&b, 1);
 
 	GPIO_ResetBits(LED_GPIO, LEDR_PIN | LEDG_PIN);
 	GPIO_SetBits(LED_GPIO, LEDB_PIN);
 
-	while(1) {} //__WFI(); //todo: check if __WFI is more acceptable while debugging
+	enum {
+	  Initial,
+	  RomLoaded
+	} state = Initial;
+
+
+	while(1) {
+	  switch(state) {
+	  case Initial:
+	    if (initROM() != 0) {
+	      usleep(100000);
+	    } else {
+	      state = RomLoaded;
+	      uint8_t b;
+	      b = 0x09; //issue bus reset, keep everything disabled and f!exp high
+	      FPGAComm_CopyToFPGA(0x4c00, (void*)&b, 1);
+	      usleep(10000);
+	      /* in theory, this is all. but in practice, something is amiss.*/
+	      //b = 0x06; //release bus reset, enable f!exp, rom and fdc
+	      b = 0x0c; //release bus reset, disable f!exp and enable fdc
+	      FPGAComm_CopyToFPGA(0x4c00, (void*)&b, 1);
+	      GPIO_ResetBits(LED_GPIO, LEDR_PIN | LEDB_PIN);
+	      GPIO_SetBits(LED_GPIO, LEDG_PIN);
+	    }
+	    break;
+	  case RomLoaded:
+	    __WFI();
+	    break;
+	  }
+	}
 
 	return 0;
 }
+
+static std::unordered_map<RefPtr<Inode>, std::string> filesystems;
+
+void VFS_RegisterFilesystem(char const *type, RefPtr<Inode> ino) {
+	//find a new name in /media
+	int num = 0;
+	std::stringstream ss;
+	while(num < 20) {
+		ss.str("");
+		ss << "/media/" << type << num;
+		if(mkdir(ss.str().c_str(), S_IRWXU | S_IRWXG | S_IRWXO) != -1)
+			break;
+		num++;
+	}
+	if (num >= 20)
+		return;
+
+	std::string name = ss.str();
+
+	filesystems.insert(std::make_pair(ino,name));
+	VFS_Mount(name.c_str(),ino);
+}
+
+void VFS_UnregisterFilesystem(RefPtr<Inode> ino) {
+	VFS_Unmount(filesystems[ino].c_str());
+	filesystems.erase(ino);
+}
+
 

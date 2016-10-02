@@ -215,12 +215,8 @@ void SDcard_Setup() {
 	NVIC_Init(&nvicinit);
 }
 
-static void SDcard_readSectors(void *unused, uint32_t sector, void *dst,
-			     uint32_t num_sect,
-			     void (*cmpl)(int, void *), void *data);
-static void SDcard_writeSectors(void *unused, uint32_t sector,
-			      void const *src, uint32_t num_sect,
-			      void (*cmpl)(int, void *), void *data);
+static void SDcard_readSectors(void *unused, struct MSDReadCommand *command);
+static void SDcard_writeSectors(void *unused, struct MSDWriteCommand *command);
 
 static struct MSD_Info sdcard_info = {
 	0, 512, NULL, SDcard_readSectors, SDcard_writeSectors
@@ -718,114 +714,93 @@ void EXTI9_5_IRQHandler() {
 	}
 }
 
-//todo: need to track current operation and protect that state information
+static void SDcard_read_sectors2(struct MSDReadCommand *command);
+static void SDcard_read_sectors2_cmpl(int result, struct SDCommand *sdcommand);
+static void SDcard_read_sectors3(struct MSDReadCommand *command);
+static void SDcard_read_sectors3_cmpl(int result, struct SDCommand *sdcommand);
 
-static uint32_t read_num_sect;
-static uint32_t read_sector;
-static void *read_dst;
-static void (*read_cmpl)(int, void *);
-static void *read_cmpl_data;
-
-static void SDcard_read_sectors2();
-static void SDcard_read_sectors2_cmpl(int result, struct SDCommand *unused);
-static void SDcard_read_sectors3();
-static void SDcard_read_sectors3_cmpl(int result, struct SDCommand *unused);
-
-static void SDcard_readSectors(void *unused, uint32_t sector, void *dst,
-			     uint32_t num_sect,
-			     void (*cmpl)(int, void *), void *data) {
-	read_num_sect = num_sect;
-	read_sector = sector;
-	read_dst = dst;
-	read_cmpl = cmpl;
-	read_cmpl_data = data;
-
-	SDcard_read_sectors2();
+static void SDcard_readSectors(void *unused, struct MSDReadCommand *command) {
+	SDcard_read_sectors2(command);
 }
 
-static void SDcard_read_sectors2() {
+static void SDcard_read_sectors2(struct MSDReadCommand *command) {
 	if (card_type == CardHC) {
-		command.argument = read_sector;
+		command->sdcard.sdcommand.argument = command->start_block;
 	} else {
-		command.argument = read_sector * 512;
+		command->sdcard.sdcommand.argument = command->start_block * 512;
 	}
-	if (read_num_sect > 1) {
+	if (command->num_blocks > 1) {
 		/* Send CMD18 READ_MULT_BLOCK */
-		command.command = 18;
+		command->sdcard.sdcommand.command = 18;
 	} else {
 		/* Send CMD17 READ_SINGLE_BLOCK */
-		command.command = 17;
+		command->sdcard.sdcommand.command = 17;
 	}
-	command.rca = card_rca;
-	command.responseType = Response1;
-	command.retryCounter = 2;
-	command.data = read_dst;
-	command.datalength = 512*read_num_sect;
-	command.datablocksize = SDIO_DataBlockSize_512b;
-	command.dataType = DataToSDIO;
-	command.completion = SDcard_read_sectors2_cmpl;
+	command->sdcard.sdcommand.rca = card_rca;
+	command->sdcard.sdcommand.responseType = Response1;
+	command->sdcard.sdcommand.retryCounter = 2;
+	command->sdcard.sdcommand.data = command->dst;
+	command->sdcard.sdcommand.datalength = 512*command->num_blocks;
+	command->sdcard.sdcommand.datablocksize = SDIO_DataBlockSize_512b;
+	command->sdcard.sdcommand.dataType = DataToSDIO;
+	command->sdcard.sdcommand.completion = SDcard_read_sectors2_cmpl;
 
-	SDIO_Command(&command);
+	SDIO_Command(&command->sdcard.sdcommand);
 }
 
-static void SDcard_read_sectors2_cmpl(int result, struct SDCommand *unused) {
+static void SDcard_read_sectors2_cmpl(int result, struct SDCommand *sdcommand) {
+	struct MSDReadCommand *command = container_of(sdcommand, struct MSDReadCommand, sdcard.sdcommand);
 	if (result != SDIO_OK) {
 		if (result == SDIO_CommandTimeout)
-			read_cmpl(ETIMEDOUT, read_cmpl_data);
+			command->completion(ETIMEDOUT, command);
 		else if (result == SDIO_CSError) {
-			if (command.response[0] & SD_CS_ADDR_OUT_OF_RANGE)
-				read_cmpl(ENODATA, read_cmpl_data); //for write, ENOSPC
+			if (command->sdcard.sdcommand.response[0] &
+			    SD_CS_ADDR_OUT_OF_RANGE)
+				command->completion(ENODATA, command); //for write, ENOSPC
 			else
-				read_cmpl(EIO, read_cmpl_data);
+				command->completion(EIO, command);
 		} else {
-			read_cmpl(EIO, read_cmpl_data);
+			command->completion(EIO, command);
 		}
 		return;
 	}
 
-	if (read_num_sect > 1) {
-		SDcard_read_sectors3();
+	if (command->num_blocks > 1) {
+		SDcard_read_sectors3(command);
 
 		return;
 	}
 
-	read_cmpl(0, read_cmpl_data);
+	command->completion(0, command);
 }
 
-static void SDcard_read_sectors3() {
+static void SDcard_read_sectors3(struct MSDReadCommand *command) {
 	/* Cmd12: STOP_TRANSMISSION */
-	command.argument = 0;
-	command.command = 12;
-	command.responseType = Response1;
-	command.dataType = NoData;
-	command.retryCounter = 2;
-	command.data = NULL;
-	command.completion = SDcard_read_sectors3_cmpl;
+	command->sdcard.sdcommand.argument = 0;
+	command->sdcard.sdcommand.command = 12;
+	command->sdcard.sdcommand.responseType = Response1;
+	command->sdcard.sdcommand.dataType = NoData;
+	command->sdcard.sdcommand.retryCounter = 2;
+	command->sdcard.sdcommand.data = NULL;
+	command->sdcard.sdcommand.completion = SDcard_read_sectors3_cmpl;
 
-	SDIO_Command(&command);
+	SDIO_Command(&command->sdcard.sdcommand);
 }
 
-static void SDcard_read_sectors3_cmpl(int result, struct SDCommand *unused) {
+static void SDcard_read_sectors3_cmpl(int result, struct SDCommand *sdcommand) {
+	struct MSDReadCommand *command = container_of(sdcommand, struct MSDReadCommand, sdcard.sdcommand);
 	if (result != SDIO_OK) {
 		if (result == SDIO_CommandTimeout)
-			read_cmpl(ETIMEDOUT, read_cmpl_data);
-		else if (result == SDIO_CSError) {
-			if (command.response[0] & SD_CS_ADDR_OUT_OF_RANGE)
-				read_cmpl(ENODATA, read_cmpl_data); //for write, ENOSPC
-			else
-				read_cmpl(EIO, read_cmpl_data);
-		} else {
-			read_cmpl(EIO, read_cmpl_data);
-		}
+			command->completion(ETIMEDOUT, command);
+		else
+			command->completion(EIO, command);
 		return;
 	}
 
-	read_cmpl(0, read_cmpl_data);
+	command->completion(0, command);
 }
 
-static void SDcard_writeSectors(void *unused, uint32_t sector, void const *src,
-			      uint32_t num_sect,
-			      void (*cmpl)(int,void *), void *data) {
-	cmpl(-1,data);
+static void SDcard_writeSectors(void *unused, struct MSDWriteCommand *command) {
+	command->completion(-1, command);
 }
 

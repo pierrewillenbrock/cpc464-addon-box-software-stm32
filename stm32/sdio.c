@@ -110,6 +110,7 @@ void SDIO_Setup() {
 	GPIO_PinAFConfig(SD_GPIO2, GPIO_PinSource2, GPIO_AF_SDIO);
 
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_SDIO, ENABLE);
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_DMA2, ENABLE);
 }
 
 void SDIO_PowerUp() {
@@ -148,6 +149,12 @@ void SDIO_PowerUp() {
 	nvicinit.NVIC_IRQChannelSubPriority = 3;
 	nvicinit.NVIC_IRQChannelCmd = ENABLE;
 	NVIC_Init(&nvicinit);
+
+	nvicinit.NVIC_IRQChannel = DMA2_Stream3_IRQn;
+	nvicinit.NVIC_IRQChannelPreemptionPriority = 3;
+	nvicinit.NVIC_IRQChannelSubPriority = 3;
+	nvicinit.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_Init(&nvicinit);
 }
 
 void SDIO_ClockEnable() {
@@ -155,18 +162,15 @@ void SDIO_ClockEnable() {
 }
 
 void SDIO_ConfigureBus(int widebus, int maxkhz) {
-	if (maxkhz > 1000)
-		maxkhz = 1000;
-
 	SDIO_InitTypeDef sdioinit;
 	SDIO_StructInit(&sdioinit);
 	//defines relationship between internal clock and CK pin. probably okay?
 	sdioinit.SDIO_ClockEdge = SDIO_ClockEdge_Rising;
 	sdioinit.SDIO_ClockBypass = SDIO_ClockBypass_Disable;
-	sdioinit.SDIO_ClockPowerSave = SDIO_ClockPowerSave_Disable;// not during setup
+	sdioinit.SDIO_ClockPowerSave = SDIO_ClockPowerSave_Disable;// not during setup, maybe later.
 	sdioinit.SDIO_BusWide = widebus?SDIO_BusWide_4b:SDIO_BusWide_1b;
 	sdioinit.SDIO_HardwareFlowControl = SDIO_HardwareFlowControl_Enable;
-	int div = 48000/maxkhz;
+	int div = (48000+maxkhz-1)/maxkhz;//round up
 	if (div > 253)
 		div = 253;
 	if (div < 2)
@@ -347,30 +351,25 @@ void SDIO_IRQHandler(void) {
 			SDIO_ITConfig(SDIO_IT_RXOVERR, ENABLE);
 			SDIO_ITConfig(SDIO_IT_DCRCFAIL, ENABLE);
 			SDIO_ITConfig(SDIO_IT_DTIMEOUT, ENABLE);
-			SDIO_ITConfig(SDIO_IT_DATAEND, ENABLE);
 			SDIO_ITConfig(SDIO_IT_STBITERR, ENABLE);
-			SDIO_ITConfig(SDIO_IT_RXFIFOHF, ENABLE);
 			timer_handle = Timer_Oneshot(1000000, SDIO_timeout, NULL);
 			break;
 		case DataToCard:
 			SD_DEBUG_SAMPLE(result, c);
 			c->state = 3;
-			//todo: correct irqs?
 			//enable irqs for data transfer
-			SDIO_ITConfig(SDIO_IT_RXOVERR, ENABLE);
+			SDIO_ITConfig(SDIO_IT_TXUNDERR, ENABLE);
 			SDIO_ITConfig(SDIO_IT_DCRCFAIL, ENABLE);
 			SDIO_ITConfig(SDIO_IT_DTIMEOUT, ENABLE);
-			SDIO_ITConfig(SDIO_IT_DATAEND, ENABLE);
 			SDIO_ITConfig(SDIO_IT_STBITERR, ENABLE);
-			SDIO_ITConfig(SDIO_IT_RXFIFOHF, ENABLE);
 			timer_handle = Timer_Oneshot(1000, SDIO_timeout, NULL);
 			break;
 		}
-	} else if (c->state == 2) {
+	} else if (c->state == 2 || c->state == 3) {
 		Timer_Cancel(timer_handle);
 		timer_handle = 0;
 
-		int result = SDIO_OK;
+		int result = SDIO_UnknownError;
 
 		if (SDIO_GetFlagStatus(SDIO_FLAG_RXOVERR))
 			result = SDIO_DataRxOverrun;
@@ -378,54 +377,61 @@ void SDIO_IRQHandler(void) {
 			result = SDIO_DataCRC;
 		if (SDIO_GetFlagStatus(SDIO_FLAG_DTIMEOUT))
 			result = SDIO_DataTimeout;
-
-		if (result != SDIO_OK) {
-			SDIO_ITConfig(SDIO_IT_RXOVERR, DISABLE);
-			SDIO_ITConfig(SDIO_IT_DCRCFAIL, DISABLE);
-			SDIO_ITConfig(SDIO_IT_DTIMEOUT, DISABLE);
-			SDIO_ITConfig(SDIO_IT_DATAEND, DISABLE);
-			SDIO_ITConfig(SDIO_IT_STBITERR, DISABLE);
-			SDIO_ITConfig(SDIO_IT_RXFIFOHF, DISABLE);
-			//SDIO_ClearFlag(0x00c007ff);
-
-			SD_DEBUG_SAMPLE(result, c);
-			current_command = NULL;
-			c->completion(result, c);
-			return;
-		}
-
-		if (SDIO_GetFlagStatus(SDIO_FLAG_RXFIFOHF)) {
-			for(unsigned int i = 0; i < 8; i++) {
-				*(uint32_t*)((char*)c->data+c->datapos) = SDIO_ReadData();
-				c->datapos += 4;
-			}
-
-			timer_handle = Timer_Oneshot(1000000, SDIO_timeout, NULL);
-			return;
-		}
-
-		//must be DATAEND
-		unsigned count = 2048;
-
-		/* Empty FIFO if there is still any data */
-		while (SDIO_GetFlagStatus(SDIO_FLAG_RXDAVL) && count > 0)
-		{
-			*(uint32_t*)((char*)c->data+c->datapos) = SDIO_ReadData();
-			c->datapos += 4;
-			count--;
-		}
+		if (SDIO_GetFlagStatus(SDIO_FLAG_STBITERR))
+			result = SDIO_DataStartBitError;
 
 		SDIO_ITConfig(SDIO_IT_RXOVERR, DISABLE);
+		SDIO_ITConfig(SDIO_IT_TXUNDERR, DISABLE);
 		SDIO_ITConfig(SDIO_IT_DCRCFAIL, DISABLE);
 		SDIO_ITConfig(SDIO_IT_DTIMEOUT, DISABLE);
-		SDIO_ITConfig(SDIO_IT_DATAEND, DISABLE);
 		SDIO_ITConfig(SDIO_IT_STBITERR, DISABLE);
-		SDIO_ITConfig(SDIO_IT_RXFIFOHF, DISABLE);
 		//SDIO_ClearFlag(0x00c007ff);
 
 		SD_DEBUG_SAMPLE(result, c);
 		current_command = NULL;
 		c->completion(result, c);
+	}
+}
+
+void DMA2_Stream3_IRQHandler() {
+	struct SDCommand *c = current_command;
+	current_command = NULL;
+	Timer_Cancel(timer_handle);
+	timer_handle = 0;
+	SDIO_ITConfig(SDIO_IT_RXOVERR, DISABLE);
+	SDIO_ITConfig(SDIO_IT_DCRCFAIL, DISABLE);
+	SDIO_ITConfig(SDIO_IT_DTIMEOUT, DISABLE);
+	SDIO_ITConfig(SDIO_IT_STBITERR, DISABLE);
+	switch (c->responseType){
+	case NoResponse:
+		SDIO_ITConfig(SDIO_IT_CMDSENT, DISABLE);
+		break;
+	case ResponseShort:
+	case ResponseLong:
+	case Response1:
+	case Response3:
+		SDIO_ITConfig(SDIO_IT_CMDREND, DISABLE);
+		SDIO_ITConfig(SDIO_IT_CCRCFAIL, DISABLE);
+		SDIO_ITConfig(SDIO_IT_CTIMEOUT, DISABLE);
+		break;
+	}
+	DMA_ITConfig(DMA2_Stream3, DMA_IT_TE | DMA_IT_TC, DISABLE);
+	if (DMA_GetFlagStatus(DMA2_Stream3, DMA_FLAG_TEIF3)) {
+		DMA_ClearITPendingBit(DMA2_Stream3, DMA_IT_TEIF3);
+		if (c->retryCounter > 0) {
+			SD_DEBUG_SAMPLE(SDIO_SystemTimeout, c);
+			c->retryCounter--;
+			SDIO_Command(c);
+			return;
+		}
+		//SDIO_ClearFlag(0x00c007ff);
+		SD_DEBUG_SAMPLE(SDIO_DMAError, c);
+		c->completion(SDIO_DMAError, c);
+	}
+	if (DMA_GetFlagStatus(DMA2_Stream3, DMA_FLAG_TCIF3)) {
+		DMA_ClearITPendingBit(DMA2_Stream3, DMA_IT_TCIF3);
+		SD_DEBUG_SAMPLE(0, c);
+		c->completion(0, c);
 	}
 }
 
@@ -452,6 +458,11 @@ static void SDIO_timeout(void *unused) {
 		SDIO_ITConfig(SDIO_IT_CTIMEOUT, DISABLE);
 		break;
 	}
+	SDIO_ITConfig(SDIO_IT_RXOVERR, DISABLE);
+	SDIO_ITConfig(SDIO_IT_DCRCFAIL, DISABLE);
+	SDIO_ITConfig(SDIO_IT_DTIMEOUT, DISABLE);
+	SDIO_ITConfig(SDIO_IT_STBITERR, DISABLE);
+	DMA_ITConfig(DMA2_Stream3, DMA_IT_TE | DMA_IT_TC, DISABLE);
 	//SDIO_ClearFlag(0x00c007ff);
 	SD_DEBUG_SAMPLE(SDIO_SystemTimeout, c);
 	c->completion(SDIO_SystemTimeout, c);
@@ -464,36 +475,29 @@ void SDIO_Command(struct SDCommand *command) {
 
 	SDIO_DataInitTypeDef sdiodatainit;
 	SDIO_DataStructInit(&sdiodatainit);
-	if (command->command & SDIO_APPCMD) {
-		sdiodatainit.SDIO_DataTimeOut = 0;
-	} else {
-		switch(command->dataType) {
-		case NoData:
-			sdiodatainit.SDIO_DataTimeOut = 0;
-			break;
-		case DataToSDIO:
-			sdiodatainit.SDIO_DataLength = command->datalength;
-			sdiodatainit.SDIO_DataBlockSize = command->datablocksize;
-			sdiodatainit.SDIO_TransferDir = SDIO_TransferDir_ToSDIO;
-			sdiodatainit.SDIO_TransferMode = SDIO_TransferMode_Block;
-			sdiodatainit.SDIO_DPSM = SDIO_DPSM_Enable;
-			//todo: setup DMA2, Stream 6 for SDIO->FIFO or DMA2 Stream 3 (why are there two?? -- does not matter, not going to use any other DMA)
-			break;
-		case DataToCard:
-			sdiodatainit.SDIO_DataLength = command->datalength;
-			sdiodatainit.SDIO_DataBlockSize = command->datablocksize;
-			sdiodatainit.SDIO_TransferDir = SDIO_TransferDir_ToCard;
-			sdiodatainit.SDIO_TransferMode = SDIO_TransferMode_Block;
-			sdiodatainit.SDIO_DPSM = SDIO_DPSM_Enable;
-			break;
-		}
-	}
-	SDIO_DataConfig(&sdiodatainit);
-
-
 	SDIO_CmdInitTypeDef sdiocmdinit;
 	SDIO_CmdStructInit(&sdiocmdinit);
+	DMA_InitTypeDef dmainit;
+	DMA_StructInit(&dmainit);
+
+	dmainit.DMA_Channel = DMA_Channel_4;
+	dmainit.DMA_PeripheralBaseAddr = (uint32_t)&(SDIO->FIFO);
+	dmainit.DMA_Memory0BaseAddr = (uint32_t)command->data;
+	dmainit.DMA_BufferSize = command->datalength;
+	dmainit.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
+	dmainit.DMA_MemoryInc = DMA_MemoryInc_Enable;
+	dmainit.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Word;
+	dmainit.DMA_MemoryDataSize = DMA_MemoryDataSize_Word;
+	dmainit.DMA_Mode = DMA_Mode_Normal;
+	dmainit.DMA_Priority = DMA_Priority_Low;
+	dmainit.DMA_FIFOMode = DMA_FIFOMode_Enable;
+	dmainit.DMA_FIFOThreshold = DMA_FIFOThreshold_Full;
+	dmainit.DMA_MemoryBurst = DMA_MemoryBurst_INC4;
+	dmainit.DMA_PeripheralBurst = DMA_PeripheralBurst_INC4;
+
 	if (command->command & SDIO_APPCMD) {
+		sdiodatainit.SDIO_DataTimeOut = 0;
+		DMA_ITConfig(DMA2_Stream3, DMA_IT_TE | DMA_IT_TC, DISABLE);
 		sdiocmdinit.SDIO_Argument = command->rca << 16;
 		sdiocmdinit.SDIO_CmdIndex = 55;
 		sdiocmdinit.SDIO_Response = SDIO_Response_Short;
@@ -502,6 +506,41 @@ void SDIO_Command(struct SDCommand *command) {
 		SDIO_ITConfig(SDIO_IT_CTIMEOUT, ENABLE);
 		command->state = 0;
 	} else {
+		switch(command->dataType) {
+		case NoData:
+			sdiodatainit.SDIO_DataTimeOut = 0;
+			DMA_ITConfig(DMA2_Stream3, DMA_IT_TE | DMA_IT_TC, DISABLE);
+			break;
+		case DataToSDIO:
+			sdiodatainit.SDIO_DataLength = command->datalength;
+			sdiodatainit.SDIO_DataBlockSize = command->datablocksize;
+			sdiodatainit.SDIO_TransferDir = SDIO_TransferDir_ToSDIO;
+			sdiodatainit.SDIO_TransferMode = SDIO_TransferMode_Block;
+			sdiodatainit.SDIO_DPSM = SDIO_DPSM_Enable;
+			SDIO_DMACmd(ENABLE);
+
+			dmainit.DMA_DIR = DMA_DIR_PeripheralToMemory;
+			DMA_Init(DMA2_Stream3, &dmainit);
+			DMA_FlowControllerConfig(DMA2_Stream3, DMA_FlowCtrl_Peripheral);
+			DMA_Cmd(DMA2_Stream3, ENABLE);
+			DMA_ITConfig(DMA2_Stream3, DMA_IT_TE | DMA_IT_TC, ENABLE);
+			break;
+		case DataToCard:
+			sdiodatainit.SDIO_DataLength = command->datalength;
+			sdiodatainit.SDIO_DataBlockSize = command->datablocksize;
+			sdiodatainit.SDIO_TransferDir = SDIO_TransferDir_ToCard;
+			sdiodatainit.SDIO_TransferMode = SDIO_TransferMode_Block;
+			sdiodatainit.SDIO_DPSM = SDIO_DPSM_Enable;
+			SDIO_DMACmd(ENABLE);
+
+			dmainit.DMA_DIR = DMA_DIR_MemoryToPeripheral;
+			DMA_Init(DMA2_Stream3, &dmainit);
+			DMA_FlowControllerConfig(DMA2_Stream3, DMA_FlowCtrl_Peripheral);
+			DMA_Cmd(DMA2_Stream3, ENABLE);
+			DMA_ITConfig(DMA2_Stream3, DMA_IT_TE | DMA_IT_TC, ENABLE);
+			break;
+		}
+
 		sdiocmdinit.SDIO_Argument = command->argument;
 		sdiocmdinit.SDIO_CmdIndex = command->command;
 		switch (command->responseType){
@@ -526,16 +565,15 @@ void SDIO_Command(struct SDCommand *command) {
 		}
 		command->state = 1;
 	}
+
 	sdiocmdinit.SDIO_Wait = SDIO_Wait_No;
 	sdiocmdinit.SDIO_CPSM = SDIO_CPSM_Enable;
-
-	volatile int delay = 168*8*10/4;//wait for at least 8 sd cycles
-	while(delay > 0) delay--;
 
 	current_command = command;
 	timer_handle = Timer_Oneshot(10000, SDIO_timeout, NULL);
 	command->datapos = 0;
 
+	SDIO_DataConfig(&sdiodatainit);
 	SDIO_SendCommand(&sdiocmdinit);
 }
 

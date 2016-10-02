@@ -13,6 +13,8 @@
 #define SDIO_DataTimeout       7
 #define SDIO_DataStartBitError 8
 #define SDIO_CSError           9
+#define SDIO_DMAError          10
+#define SDIO_UnknownError      11
 
 #define SDIO_DataBlockSize_1b               ((uint32_t)0x00000000)
 #define SDIO_DataBlockSize_2b               ((uint32_t)0x00000010)

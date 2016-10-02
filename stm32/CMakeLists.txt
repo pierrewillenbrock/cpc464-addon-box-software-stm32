@@ -65,7 +65,8 @@ include_directories(
 
 set(TESTER_CSRCS
   tester.cpp
-  syscalls.c
+  syscallscommon.c
+  syscallstester.c
   assert.c
   system_stm32f4xx.c
   stm32f4xx_adc.c
@@ -112,7 +113,8 @@ set(MAIN_CSRCS
   sdcard.c
   msd.cpp
   fat.cpp
-  syscalls.c
+  syscallscommon.c
+  syscallscpp.cpp
   cppsupport.cpp
   assert.c
   system_stm32f4xx.c
