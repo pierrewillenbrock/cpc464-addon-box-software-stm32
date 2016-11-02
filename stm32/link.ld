@@ -8,9 +8,9 @@ MEMORY
 }
 
 /* inital stack pointer at end of memory */
-_estack =  0x20005000;/* gets hard coded into vector table */
-_bstack =  0x20004000;
-_eheap = 0x2000f000;
+_estack =  0x20020000;/* gets hard coded into vector table */
+_bstack =  0x2001f000;
+_eheap = 0x2001f000;
 SECTIONS
 {
     .  = 0x08000000;          /* From 0x00000000 */

@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <unordered_map>
 #include "refcounted.hpp"
+#include "bits.h"
 
 struct Dentry;
 
@@ -17,6 +18,14 @@ struct Inode : public Refcounted {
 		return -1;
 	}
 	virtual _ssize_t pwrite(const void *ptr, size_t len, off_t offset) {
+		errno = EINVAL;
+		return -1;
+	}
+	virtual _ssize_t pread_nb(PReadCommand * command) {
+		errno = EINVAL;
+		return -1;
+	}
+	virtual _ssize_t pwrite_nb(PWriteCommand * command) {
 		errno = EINVAL;
 		return -1;
 	}

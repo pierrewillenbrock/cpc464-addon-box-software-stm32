@@ -13,6 +13,7 @@
 #include <dirent.h>
 #include "irq.h"
 #include "vfs.hpp"
+#include "bits.h"
 
 struct File : public Refcounted  {
 	RefPtr<Dentry> dentry;
@@ -54,6 +55,7 @@ extern "C" {
 	_off_t _lseek_r(struct _reent *r, int file, _off_t ptr, int dir);
 	int _fstat_r(struct _reent *r, int file, struct stat *st);
 	int mkdir(const char *path, mode_t mode);
+	int access(const char *path, int mode);
 }
 
 static volatile char stdout_buffer[256];
@@ -418,6 +420,38 @@ int _fstat_r(struct _reent *r, int file, struct stat *st) {
 	return fds[file]->dentry->inode->fstat(st);
 }
 
+int pread_nb(int file, struct PReadCommand *command) {
+	ISR_Guard isrguard;
+	if (file == -1 || (unsigned)file >= fds.size()) {
+		errno = EBADF;
+		return -1;
+	}
+	if (!fds[file] ||
+	    ((fds[file]->openflags & O_ACCMODE) != O_RDONLY &&
+	     (fds[file]->openflags & O_ACCMODE) != O_RDWR)) {
+		errno = EBADF;
+		return -1;
+	}
+
+	return fds[file]->dentry->inode->pread_nb(command);
+}
+
+int pwrite_nb(int file, struct PWriteCommand *command) {
+	ISR_Guard isrguard;
+	if (file == -1 || (unsigned)file >= fds.size()) {
+		errno = EBADF;
+		return -1;
+	}
+	if (!fds[file] ||
+	    ((fds[file]->openflags & O_ACCMODE) != O_WRONLY &&
+	     (fds[file]->openflags & O_ACCMODE) != O_RDWR)) {
+		errno = EBADF;
+		return -1;
+	}
+
+	return fds[file]->dentry->inode->pwrite_nb(command);
+}
+
 struct RealDIR {
 	RefPtr<Dentry> dir;
 	std::vector<char> dentstore;
@@ -618,6 +652,60 @@ int mkdir(const char *path, mode_t mode) {
 	}
 	if (dp->inode->mkdir(dc, mode) != 0)
 		return -1;
+	return 0;
+}
+
+int access(const char *path, int mode) {
+	const char*basename;
+	RefPtr<Dentry> dp = findParentDentry(path, basename);
+	if (!dp->inode) {
+		errno = ENOENT;
+		return -1;
+	}
+	std::string nm(basename);
+	RefPtr<Dentry> dc = dp->lookup(nm);
+	if (!dc) {
+		//create a new one, try the lookup
+		dc = new Dentry(nm, dp);
+		dp->inode->lookup(dc);
+		//insert it even if there is no inode. that just means
+		//its a negative entry, as opposed to a positive entry
+		//with a valid inode.
+		{
+			ISR_Guard g;
+			//check again if it is known.
+			RefPtr<Dentry> dc2 = dp->lookup(nm);
+			if (!dc2)
+				dp->insertChild(dc);
+		}
+	}
+
+	if (!dc->inode) {
+		errno = EACCES;
+		return -1;
+	}
+
+	if (mode & R_OK) {
+		if (!(dc->inode->mode & (S_IRUSR | S_IRGRP | S_IROTH))) {
+			errno = EACCES;
+			return -1;
+		}
+	}
+
+	if (mode & W_OK) {
+		if (!(dc->inode->mode & (S_IWUSR | S_IWGRP | S_IWOTH))) {
+			errno = EACCES;
+			return -1;
+		}
+	}
+
+	if (mode & X_OK) {
+		if (!(dc->inode->mode & (S_IXUSR | S_IXGRP | S_IXOTH))) {
+			errno = EACCES;
+			return -1;
+		}
+	}
+
 	return 0;
 }
 

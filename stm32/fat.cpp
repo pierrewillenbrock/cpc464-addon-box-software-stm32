@@ -168,7 +168,7 @@ static void fetchBlock_cmpl(int res, MSDReadCommand *command) {
 	FAT_Partition_priv *p = container_of(command, FAT_Partition_priv,
 					     read_command);
 	if (res != 0) {
-		p->blockno = ~1U;
+		p->blockno = ~0U;
 		return; //hmm. okay, well.
 	}
 	p->blockno = p->read_command.start_block - p->first_block;
@@ -190,10 +190,81 @@ static void fetchBlock(FAT_Partition_priv *priv, uint32_t block) {
 	}
 }
 
-static uint32_t findNextCluster(FAT_Partition_priv *priv, uint32_t cluster) {
-	fetchBlock(priv, (cluster-2)*4/512 + priv->fat_start_block);
-	return ((uint32_t*)priv->block.data())[(cluster-2)%(512/4)];
+/* caller fills: read_command->num_blocks, dst, completion.
+*/
+/* pre-condition: none
+   post-condition: read_command->completion gets called once and only once
+ */
+static void fetchBlock_nb(FAT_Partition_priv *priv, uint32_t block,
+			  MSDReadCommand *read_command) {
+	read_command->start_block = priv->first_block + block;
+	priv->msd->readBlocks(priv->msd->data, read_command);
 }
+
+static uint32_t findNextCluster(FAT_Partition_priv *priv, uint32_t cluster) {
+	fetchBlock(priv, cluster*4/512 + priv->fat_start_block);
+	return ((uint32_t*)priv->block.data())[cluster%(512/4)];
+}
+
+struct Fat_FindNextCluster_Command {
+	FAT_Partition_priv *priv;
+	uint32_t cluster;
+	void (*completion)(uint32_t cluster,
+			   Fat_FindNextCluster_Command *command);
+	uint32_t blockno;//init with ~0U
+	MSDReadCommand read_command;
+	char buf[512];
+};
+
+/* pre-condition: none
+   post-condition: command->completion gets called once and only once
+ */
+static void findNextCluster_nb_cmpl(int res, MSDReadCommand *command) {
+	Fat_FindNextCluster_Command *p = container_of(
+		command, Fat_FindNextCluster_Command, read_command);
+	if (res != 0) {
+		p->blockno = ~0U;
+		p->completion(~0U, p);
+	}
+	p->blockno = command->start_block - p->priv->first_block;
+	p->completion(
+		((uint32_t*)p->buf)[p->cluster%(512/4)],
+		p);
+}
+
+/* caller fills command->priv, cluster, completion. everything else gets used.
+ */
+/* pre-condition: none
+   post-condition: command->completion gets called once and only once
+ */
+static void findNextCluster_nb(Fat_FindNextCluster_Command *command) {
+	uint32_t blockno = command->cluster*4/512 +
+		command->priv->fat_start_block;
+	if (command->blockno == blockno) {
+		command->completion(
+			((uint32_t*)command->buf)[command->cluster%(512/4)],
+			command);
+		return;
+	}
+	command->read_command.num_blocks = 1;
+	command->read_command.dst = command->buf;
+	command->read_command.completion = findNextCluster_nb_cmpl;
+	fetchBlock_nb(command->priv, blockno, &command->read_command);
+}
+
+struct FatInode;
+
+struct FatInodeReadNb {
+	PReadCommand *command;
+	char *ptr;
+	size_t len;
+	off_t offset;
+	int res;
+	uint32_t current_cluster;
+	uint32_t current_offset;
+	RefPtr<FatInode> inode;
+	Fat_FindNextCluster_Command findnextcluster_command;
+};
 
 struct FatInode : public Inode {
 	FAT_Partition_priv *priv;
@@ -213,49 +284,15 @@ struct FatInode : public Inode {
 		{
 			this->mode = mode;
 		}
-	virtual _ssize_t pread(void *ptr, size_t len, off_t offset) {
-		if ((unsigned)offset >= size)
-			return 0;
-		if (len + offset > size)
-			len = size - offset;
-		_ssize_t res = 0;
-		char *cptr = (char*)ptr;
-		while(len > 0) {
-			if ((unsigned)offset < current_offset) {
-				//need to restart from 0.
-				current_offset = 0;
-				current_cluster = first_cluster;
-			}
-			//scan fat to find the given cluster
-			while ((unsigned)offset >= current_offset +
-			       priv->bytes_per_cluster &&
-				current_cluster < 0xffffff7) {
-				current_offset += priv->bytes_per_cluster;
-				current_cluster = findNextCluster(priv, current_cluster);
-			}
-			if (current_cluster >= 0xffffff7)
-				break;
-			fetchBlock(priv,priv->cluster_0_block +
-				   current_cluster * priv->blocks_per_cluster +
-				   (offset - current_offset)/512);
-			size_t l2 = 512 - (offset - current_offset) % 512;
-			if(l2 > len)
-				l2 = len;
-			memcpy(cptr, priv->block.data() +
-			       (offset - current_offset) % 512,
-			       l2);
-			len -= l2;
-			offset += l2;
-			res += l2;
-			cptr += l2;
-		}
-
-		return res;
-	}
-	virtual _ssize_t pwrite(const void *ptr, size_t len, off_t offset) {
-		errno = EINVAL;
-		return -1;
-	}
+	virtual _ssize_t pread(void *ptr, size_t len, off_t offset);
+	virtual _ssize_t pwrite(const void *ptr, size_t len, off_t offset);
+	void pread_nb_cmpl1(FatInodeReadNb *p);
+	static void _pread_nb_cmpl1(uint32_t cluster,
+				    Fat_FindNextCluster_Command *command);
+	void pread_nb_cmpl2(int res, FatInodeReadNb *p);
+	static void _pread_nb_cmpl2(int res, MSDReadCommand *command);
+	virtual _ssize_t pread_nb(PReadCommand * command);
+	virtual _ssize_t pwrite_nb(PWriteCommand * command);
 };
 
 struct Fat16RootDirInode : public Inode {
@@ -348,15 +385,19 @@ struct FatDirInode : public FatInode {
 				mode = S_IRUSR | S_IRGRP | S_IROTH |
 					S_IWUSR | S_IWGRP | S_IWOTH;
 				if (ent.regular.attributes & 0x01)
+					//readonly
 					mode &= ~(S_IWUSR | S_IWGRP | S_IWOTH);
 				if (ent.regular.attributes & 0x02) {
 					//hidden
+					mode &= ~(S_IRWXO);
 				}
 				if (ent.regular.attributes & 0x04) {
 					//system
+					mode &= ~(S_IRWXG | S_IRWXO);
 				}
 				if (ent.regular.attributes & 0x20) {
 					//archive
+					mode &= ~S_IWOTH;
 				}
 				if (ent.regular.attributes & 0x10) {
 					//that's a directory
@@ -484,3 +525,204 @@ void FAT_Setup() {
   FS_Register(&fat_info);
 }
 
+_ssize_t FatInode::pread(void *ptr, size_t len, off_t offset) {
+	if ((unsigned)offset >= size)
+		return 0;
+	if (len + offset > size)
+		len = size - offset;
+	_ssize_t res = 0;
+	char *cptr = (char*)ptr;
+	if ((unsigned)offset < current_offset) {
+		//need to restart from 0.
+		current_offset = 0;
+		current_cluster = first_cluster;
+	}
+	while(len > 0) {
+		//scan fat to find the given cluster
+		while ((unsigned)offset >= current_offset +
+		       priv->bytes_per_cluster &&
+		       current_cluster < 0xffffff7) {
+			current_offset += priv->bytes_per_cluster;
+			current_cluster = findNextCluster(priv, current_cluster);
+		}
+		if (current_cluster >= 0xffffff7)
+			break;
+		fetchBlock(priv,priv->cluster_0_block +
+			   current_cluster * priv->blocks_per_cluster +
+			   (offset - current_offset)/512);
+		size_t l2 = 512 - (offset - current_offset) % 512;
+		if(l2 > len)
+			l2 = len;
+		memcpy(cptr, priv->block.data() +
+		       (offset - current_offset) % 512,
+		       l2);
+		len -= l2;
+		offset += l2;
+		res += l2;
+		cptr += l2;
+	}
+
+	return res;
+}
+_ssize_t FatInode::pwrite(const void *ptr, size_t len, off_t offset) {
+	errno = EINVAL;
+	return -1;
+}
+
+/* pre-condition: p is allocated using new.
+   post-condition: p is deallocated, command->completion has been called.
+*/
+void FatInode::pread_nb_cmpl2(int res, FatInodeReadNb *p) {
+	PReadCommand * command = p->command;
+	if (res != 0) {
+		{
+			ISR_Guard g;
+			current_cluster = p->current_cluster;
+			current_offset = p->current_offset;
+		}
+		delete p;
+		command->completion(-1,EIO,command);
+		return;
+	}
+	p->findnextcluster_command.blockno =
+		p->findnextcluster_command.read_command.start_block -
+		priv->first_block;
+	size_t l2 = 512 - (p->offset - p->current_offset) % 512;
+	if(l2 > p->len)
+		l2 = p->len;
+	memcpy(p->ptr, p->findnextcluster_command.buf +
+	       (p->offset - p->current_offset) % 512,
+	       l2);
+	p->len -= l2;
+	p->offset += l2;
+	p->res += l2;
+	p->ptr += l2;
+	pread_nb_cmpl1(p);
+}
+
+void FatInode::_pread_nb_cmpl2(int res, MSDReadCommand *command) {
+	FatInodeReadNb *p = container_of(
+		command, FatInodeReadNb,
+		findnextcluster_command.read_command);
+	p->inode->pread_nb_cmpl2(res, p);
+}
+
+/* pre-condition: p is allocated using new.
+   post-condition: p is deallocated, command->completion has been called.
+*/
+void FatInode::pread_nb_cmpl1(FatInodeReadNb *p) {
+	PReadCommand * command = p->command;
+	if (p->current_cluster == ~0U) {
+		p->current_offset = 0;
+		p->current_cluster = first_cluster;
+		{
+			ISR_Guard g;
+			current_cluster = p->current_cluster;
+			current_offset = p->current_offset;
+		}
+		delete p;
+		command->completion(-1,EIO,command);
+		return;
+	}
+
+	while(p->len > 0) {
+		//scan fat to find the given cluster
+		if ((unsigned)p->offset >= p->current_offset +
+		    priv->bytes_per_cluster &&
+		    p->current_cluster < 0xffffff7) {
+			p->current_offset += priv->bytes_per_cluster;
+			p->findnextcluster_command.priv = priv;
+			p->findnextcluster_command.cluster = p->current_cluster;
+			p->findnextcluster_command.completion = _pread_nb_cmpl1;
+			findNextCluster_nb(&p->findnextcluster_command);
+			return;
+		}
+		if (p->current_cluster >= 0xffffff7)
+			break;
+
+		//found the cluster, now lets read it.
+		uint32_t blockno = priv->cluster_0_block +
+			p->current_cluster * priv->blocks_per_cluster +
+			(p->offset - p->current_offset)/512;
+		if (blockno != p->findnextcluster_command.blockno) {
+			p->findnextcluster_command.read_command.num_blocks = 1;
+			p->findnextcluster_command.read_command.dst =
+				p->findnextcluster_command.buf;
+			p->findnextcluster_command.read_command.completion = _pread_nb_cmpl2;
+			fetchBlock_nb(priv, blockno, &p->findnextcluster_command.read_command);
+			return;
+		}
+		size_t l2 = 512 - (p->offset - p->current_offset) % 512;
+		if(l2 > p->len)
+			l2 = p->len;
+		memcpy(p->ptr, p->findnextcluster_command.buf +
+		       (p->offset - p->current_offset) % 512,
+		       l2);
+		p->len -= l2;
+		p->offset += l2;
+		p->res += l2;
+		p->ptr += l2;
+	}
+	//done.
+	int res = p->res;
+	{
+		ISR_Guard g;
+		current_cluster = p->current_cluster;
+		current_offset = p->current_offset;
+	}
+	delete p;
+	command->completion(res,0,command);
+	return;
+}
+
+void FatInode::_pread_nb_cmpl1(uint32_t cluster,
+			       Fat_FindNextCluster_Command *command) {
+	FatInodeReadNb *p = container_of(command, FatInodeReadNb,
+					 findnextcluster_command);
+	p->current_cluster = cluster;
+	p->inode->pread_nb_cmpl1(p);
+}
+
+/* pre-condition: none.
+   post-condition: command->completion has been called.
+*/
+_ssize_t FatInode::pread_nb(PReadCommand * command) {
+	if ((unsigned)command->offset >= size) {
+		command->completion(0,0,command);
+		return 0;
+	}
+	size_t len = command->len;
+	if (len + command->offset > size)
+		len = size - command->offset;
+	if (len == 0) {
+		command->completion(0,0,command);
+		return 0;
+	}
+	FatInodeReadNb *p = new FatInodeReadNb();
+	command->pdata = p;
+	p->ptr = (char*)command->ptr;
+	p->len = len;
+	p->offset = command->offset;
+	p->res = 0;
+	p->inode = this;
+	p->command = command;
+	{
+		ISR_Guard g;
+		p->current_cluster = current_cluster;
+		p->current_offset = current_offset;
+	}
+	//now, prepare to find the cluster. we cannot use the usual
+	//infrastructure for that, it is not safe to use in interrupt.
+	if ((unsigned)p->offset < p->current_offset) {
+		//need to restart from 0.
+		p->current_offset = 0;
+		p->current_cluster = first_cluster;
+	}
+	pread_nb_cmpl1(p);
+	return 0;
+}
+
+_ssize_t FatInode::pwrite_nb(PWriteCommand * command) {
+	errno = EINVAL;
+	return -1;
+}

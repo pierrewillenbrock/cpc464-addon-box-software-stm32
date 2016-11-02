@@ -58,6 +58,17 @@ uint32_t Timer_Oneshot(uint32_t usec, void (*func)(void* data), void* data) {
 	return t.handle;
 }
 
+uint32_t Timer_Repeating(uint32_t usec, Timer_Func func, void* data) {
+	Timer t = { usec, 0, func, data };
+	uint64_t time = Timer_timeSincePowerOn() + usec;
+	{
+		ISR_Guard isrguard;
+		t.handle = handle_max++;
+		timers.insert(std::make_pair(time,t));
+	}
+	return t.handle;
+}
+
 void Timer_Cancel(uint32_t handle) {
 	ISR_Guard isrguard;
 	for(auto it = timers.begin(); it != timers.end(); it++) {

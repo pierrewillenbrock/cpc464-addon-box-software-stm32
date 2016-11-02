@@ -3,16 +3,7 @@
 
 #include <stdint.h>
 #include "sdio.h"
-
-#ifdef __cplusplus
-#define container_of(ptr, type, member) ({			\
-	const decltype( ((type *)0)->member ) *__mptr = (ptr);	\
-	(type *)( (char *)__mptr - offsetof(type,member) );})
-#else
-#define container_of(ptr, type, member) ({			\
-	const typeof( ((type *)0)->member ) *__mptr = (ptr);	\
-	(type *)( (char *)__mptr - offsetof(type,member) );})
-#endif
+#include "bits.h"
 
 struct MSDReadCommand {
   uint32_t start_block;

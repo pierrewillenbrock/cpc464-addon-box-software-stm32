@@ -77,6 +77,22 @@ public:
 	}
 	operator bool() const { return ptr != NULL; }
 	R *operator->() const { return ptr; }
+	static R *get(R *ptr) {
+		if (ptr) {
+			ISR_Guard g;
+			ptr->refcount++;
+		}
+		return ptr;
+	}
+	static void put(R *ptr) {
+		if (ptr) {
+			ISR_Guard g;
+			ptr->refcount--;
+			if (!ptr->refcount)
+				delete ptr;
+		}
+		return ptr;
+	}
 };
 
 namespace std {
