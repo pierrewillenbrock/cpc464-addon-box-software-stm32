@@ -519,7 +519,7 @@ typedef enum {ERROR = 0, SUCCESS = !ERROR} ErrorStatus;
   * @brief Analog to Digital Converter  
   */
 
-typedef struct
+typedef struct ADC_TypeDef
 {
   __IO uint32_t SR;     /*!< ADC status register,                         Address offset: 0x00 */
   __IO uint32_t CR1;    /*!< ADC control register 1,                      Address offset: 0x04 */      
@@ -543,7 +543,7 @@ typedef struct
   __IO uint32_t DR;     /*!< ADC regular data register,                   Address offset: 0x4C */
 } ADC_TypeDef;
 
-typedef struct
+typedef struct ADC_Common_TypeDef
 {
   __IO uint32_t CSR;    /*!< ADC Common status register,                  Address offset: ADC1 base address + 0x300 */
   __IO uint32_t CCR;    /*!< ADC common control register,                 Address offset: ADC1 base address + 0x304 */
@@ -556,7 +556,7 @@ typedef struct
   * @brief Controller Area Network TxMailBox 
   */
 
-typedef struct
+typedef struct CAN_TxMailBox_TypeDef
 {
   __IO uint32_t TIR;  /*!< CAN TX mailbox identifier register */
   __IO uint32_t TDTR; /*!< CAN mailbox data length control and time stamp register */
@@ -568,7 +568,7 @@ typedef struct
   * @brief Controller Area Network FIFOMailBox 
   */
   
-typedef struct
+typedef struct CAN_FIFOMailBox_TypeDef
 {
   __IO uint32_t RIR;  /*!< CAN receive FIFO mailbox identifier register */
   __IO uint32_t RDTR; /*!< CAN receive FIFO mailbox data length control and time stamp register */
@@ -580,7 +580,7 @@ typedef struct
   * @brief Controller Area Network FilterRegister 
   */
   
-typedef struct
+typedef struct CAN_FilterRegister_TypeDef
 {
   __IO uint32_t FR1; /*!< CAN Filter bank register 1 */
   __IO uint32_t FR2; /*!< CAN Filter bank register 1 */
@@ -590,7 +590,7 @@ typedef struct
   * @brief Controller Area Network 
   */
   
-typedef struct
+typedef struct CAN_TypeDef
 {
   __IO uint32_t              MCR;                 /*!< CAN master control register,         Address offset: 0x00          */
   __IO uint32_t              MSR;                 /*!< CAN master status register,          Address offset: 0x04          */
@@ -620,7 +620,7 @@ typedef struct
   * @brief CRC calculation unit 
   */
 
-typedef struct
+typedef struct CRC_TypeDef
 {
   __IO uint32_t DR;         /*!< CRC Data register,             Address offset: 0x00 */
   __IO uint8_t  IDR;        /*!< CRC Independent data register, Address offset: 0x04 */
@@ -633,7 +633,7 @@ typedef struct
   * @brief Digital to Analog Converter
   */
 
-typedef struct
+typedef struct DAC_TypeDef
 {
   __IO uint32_t CR;       /*!< DAC control register,                                    Address offset: 0x00 */
   __IO uint32_t SWTRIGR;  /*!< DAC software trigger register,                           Address offset: 0x04 */
@@ -655,19 +655,19 @@ typedef struct
   * @brief Debug MCU
   */
 
-typedef struct
+typedef struct DBGMCU_TypeDef
 {
   __IO uint32_t IDCODE;  /*!< MCU device ID code,               Address offset: 0x00 */
   __IO uint32_t CR;      /*!< Debug MCU configuration register, Address offset: 0x04 */
   __IO uint32_t APB1FZ;  /*!< Debug MCU APB1 freeze register,   Address offset: 0x08 */
   __IO uint32_t APB2FZ;  /*!< Debug MCU APB2 freeze register,   Address offset: 0x0C */
-}DBGMCU_TypeDef;
+} DBGMCU_TypeDef;
 
 /** 
   * @brief DCMI
   */
 
-typedef struct
+typedef struct DCMI_TypeDef
 {
   __IO uint32_t CR;       /*!< DCMI control register 1,                       Address offset: 0x00 */
   __IO uint32_t SR;       /*!< DCMI status register,                          Address offset: 0x04 */
@@ -686,7 +686,7 @@ typedef struct
   * @brief DMA Controller
   */
 
-typedef struct
+typedef struct DMA_Stream_TypeDef
 {
   __IO uint32_t CR;     /*!< DMA stream x configuration register      */
   __IO uint32_t NDTR;   /*!< DMA stream x number of data register     */
@@ -696,7 +696,7 @@ typedef struct
   __IO uint32_t FCR;    /*!< DMA stream x FIFO control register       */
 } DMA_Stream_TypeDef;
 
-typedef struct
+typedef struct DMA_TypeDef
 {
   __IO uint32_t LISR;   /*!< DMA low interrupt status register,      Address offset: 0x00 */
   __IO uint32_t HISR;   /*!< DMA high interrupt status register,     Address offset: 0x04 */
@@ -708,7 +708,7 @@ typedef struct
   * @brief DMA2D Controller
   */
 
-typedef struct
+typedef struct DMA2D_TypeDef
 {
   __IO uint32_t CR;            /*!< DMA2D Control Register,                         Address offset: 0x00 */
   __IO uint32_t ISR;           /*!< DMA2D Interrupt Status Register,                Address offset: 0x04 */
@@ -739,7 +739,7 @@ typedef struct
   * @brief Ethernet MAC
   */
 
-typedef struct
+typedef struct ETH_TypeDef
 {
   __IO uint32_t MACCR;
   __IO uint32_t MACFFR;
@@ -813,7 +813,7 @@ typedef struct
   * @brief External Interrupt/Event Controller
   */
 
-typedef struct
+typedef struct EXTI_TypeDef
 {
   __IO uint32_t IMR;    /*!< EXTI Interrupt mask register,            Address offset: 0x00 */
   __IO uint32_t EMR;    /*!< EXTI Event mask register,                Address offset: 0x04 */
@@ -827,7 +827,7 @@ typedef struct
   * @brief FLASH Registers
   */
 
-typedef struct
+typedef struct FLASH_TypeDef
 {
   __IO uint32_t ACR;      /*!< FLASH access control register,   Address offset: 0x00 */
   __IO uint32_t KEYR;     /*!< FLASH key register,              Address offset: 0x04 */
@@ -843,7 +843,7 @@ typedef struct
   * @brief Flexible Static Memory Controller
   */
 
-typedef struct
+typedef struct FSMC_Bank1_TypeDef
 {
   __IO uint32_t BTCR[8];    /*!< NOR/PSRAM chip-select control register(BCR) and chip-select timing register(BTR), Address offset: 0x00-1C */   
 } FSMC_Bank1_TypeDef; 
@@ -852,7 +852,7 @@ typedef struct
   * @brief Flexible Static Memory Controller Bank1E
   */
   
-typedef struct
+typedef struct FSMC_Bank1E_TypeDef
 {
   __IO uint32_t BWTR[7];    /*!< NOR/PSRAM write timing registers, Address offset: 0x104-0x11C */
 } FSMC_Bank1E_TypeDef;
@@ -861,7 +861,7 @@ typedef struct
   * @brief Flexible Static Memory Controller Bank2
   */
   
-typedef struct
+typedef struct FSMC_Bank2_TypeDef
 {
   __IO uint32_t PCR2;       /*!< NAND Flash control register 2,                       Address offset: 0x60 */
   __IO uint32_t SR2;        /*!< NAND Flash FIFO status and interrupt register 2,     Address offset: 0x64 */
@@ -875,7 +875,7 @@ typedef struct
   * @brief Flexible Static Memory Controller Bank3
   */
   
-typedef struct
+typedef struct FSMC_Bank3_TypeDef
 {
   __IO uint32_t PCR3;       /*!< NAND Flash control register 3,                       Address offset: 0x80 */
   __IO uint32_t SR3;        /*!< NAND Flash FIFO status and interrupt register 3,     Address offset: 0x84 */
@@ -889,7 +889,7 @@ typedef struct
   * @brief Flexible Static Memory Controller Bank4
   */
   
-typedef struct
+typedef struct FSMC_Bank4_TypeDef
 {
   __IO uint32_t PCR4;       /*!< PC Card  control register 4,                       Address offset: 0xA0 */
   __IO uint32_t SR4;        /*!< PC Card  FIFO status and interrupt register 4,     Address offset: 0xA4 */
@@ -904,7 +904,7 @@ typedef struct
   * @brief Flexible Memory Controller
   */
 
-typedef struct
+typedef struct FMC_Bank1_TypeDef
 {
   __IO uint32_t BTCR[8];    /*!< NOR/PSRAM chip-select control register(BCR) and chip-select timing register(BTR), Address offset: 0x00-1C */   
 } FMC_Bank1_TypeDef; 
@@ -913,7 +913,7 @@ typedef struct
   * @brief Flexible Memory Controller Bank1E
   */
   
-typedef struct
+typedef struct FMC_Bank1E_TypeDef
 {
   __IO uint32_t BWTR[7];    /*!< NOR/PSRAM write timing registers, Address offset: 0x104-0x11C */
 } FMC_Bank1E_TypeDef;
@@ -922,7 +922,7 @@ typedef struct
   * @brief Flexible Memory Controller Bank2
   */
   
-typedef struct
+typedef struct FMC_Bank2_TypeDef
 {
   __IO uint32_t PCR2;       /*!< NAND Flash control register 2,                       Address offset: 0x60 */
   __IO uint32_t SR2;        /*!< NAND Flash FIFO status and interrupt register 2,     Address offset: 0x64 */
@@ -936,7 +936,7 @@ typedef struct
   * @brief Flexible Memory Controller Bank3
   */
   
-typedef struct
+typedef struct FMC_Bank3_TypeDef
 {
   __IO uint32_t PCR3;       /*!< NAND Flash control register 3,                       Address offset: 0x80 */
   __IO uint32_t SR3;        /*!< NAND Flash FIFO status and interrupt register 3,     Address offset: 0x84 */
@@ -950,7 +950,7 @@ typedef struct
   * @brief Flexible Memory Controller Bank4
   */
   
-typedef struct
+typedef struct FMC_Bank4_TypeDef
 {
   __IO uint32_t PCR4;       /*!< PC Card  control register 4,                       Address offset: 0xA0 */
   __IO uint32_t SR4;        /*!< PC Card  FIFO status and interrupt register 4,     Address offset: 0xA4 */
@@ -963,7 +963,7 @@ typedef struct
   * @brief Flexible Memory Controller Bank5_6
   */
   
-typedef struct
+typedef struct FMC_Bank5_6_TypeDef
 {
   __IO uint32_t SDCR[2];        /*!< SDRAM Control registers ,      Address offset: 0x140-0x144  */
   __IO uint32_t SDTR[2];        /*!< SDRAM Timing registers ,       Address offset: 0x148-0x14C  */
@@ -977,7 +977,7 @@ typedef struct
   * @brief General Purpose I/O
   */
 
-typedef struct
+typedef struct GPIO_TypeDef
 {
   __IO uint32_t MODER;    /*!< GPIO port mode register,               Address offset: 0x00      */
   __IO uint32_t OTYPER;   /*!< GPIO port output type register,        Address offset: 0x04      */
@@ -995,7 +995,7 @@ typedef struct
   * @brief System configuration controller
   */
   
-typedef struct
+typedef struct SYSCFG_TypeDef
 {
   __IO uint32_t MEMRMP;       /*!< SYSCFG memory remap register,                      Address offset: 0x00      */
   __IO uint32_t PMC;          /*!< SYSCFG peripheral mode configuration register,     Address offset: 0x04      */
@@ -1008,7 +1008,7 @@ typedef struct
   * @brief Inter-integrated Circuit Interface
   */
 
-typedef struct
+typedef struct I2C_TypeDef
 {
   __IO uint16_t CR1;        /*!< I2C Control register 1,     Address offset: 0x00 */
   uint16_t      RESERVED0;  /*!< Reserved, 0x02                                   */
@@ -1036,7 +1036,7 @@ typedef struct
   * @brief Independent WATCHDOG
   */
 
-typedef struct
+typedef struct IWDG_TypeDef
 {
   __IO uint32_t KR;   /*!< IWDG Key register,       Address offset: 0x00 */
   __IO uint32_t PR;   /*!< IWDG Prescaler register, Address offset: 0x04 */
@@ -1048,7 +1048,7 @@ typedef struct
   * @brief LCD-TFT Display Controller
   */
   
-typedef struct
+typedef struct LTDC_TypeDef
 {
   uint32_t      RESERVED0[2];  /*!< Reserved, 0x00-0x04 */
   __IO uint32_t SSCR;          /*!< LTDC Synchronization Size Configuration Register,    Address offset: 0x08 */
@@ -1073,7 +1073,7 @@ typedef struct
   * @brief LCD-TFT Display layer x Controller
   */
   
-typedef struct
+typedef struct LTDC_Layer_TypeDef
 {  
   __IO uint32_t CR;            /*!< LTDC Layerx Control Register                                  Address offset: 0x84 */
   __IO uint32_t WHPCR;         /*!< LTDC Layerx Window Horizontal Position Configuration Register Address offset: 0x88 */
@@ -1096,7 +1096,7 @@ typedef struct
   * @brief Power Control
   */
 
-typedef struct
+typedef struct PWR_TypeDef
 {
   __IO uint32_t CR;   /*!< PWR power control register,        Address offset: 0x00 */
   __IO uint32_t CSR;  /*!< PWR power control/status register, Address offset: 0x04 */
@@ -1106,7 +1106,7 @@ typedef struct
   * @brief Reset and Clock Control
   */
 
-typedef struct
+typedef struct RCC_TypeDef
 {
   __IO uint32_t CR;            /*!< RCC clock control register,                                  Address offset: 0x00 */
   __IO uint32_t PLLCFGR;       /*!< RCC PLL configuration register,                              Address offset: 0x04 */
@@ -1147,7 +1147,7 @@ typedef struct
   * @brief Real-Time Clock
   */
 
-typedef struct
+typedef struct RTC_TypeDef
 {
   __IO uint32_t TR;      /*!< RTC time register,                                        Address offset: 0x00 */
   __IO uint32_t DR;      /*!< RTC date register,                                        Address offset: 0x04 */
@@ -1196,12 +1196,12 @@ typedef struct
   * @brief Serial Audio Interface
   */
   
-typedef struct
+typedef struct SAI_TypeDef
 {
   __IO uint32_t GCR;      /*!< SAI global configuration register,        Address offset: 0x00 */
 } SAI_TypeDef;
 
-typedef struct
+typedef struct SAI_Block_TypeDef
 {
   __IO uint32_t CR1;      /*!< SAI block x configuration register 1,     Address offset: 0x04 */
   __IO uint32_t CR2;      /*!< SAI block x configuration register 2,     Address offset: 0x08 */
@@ -1217,7 +1217,7 @@ typedef struct
   * @brief SD host Interface
   */
 
-typedef struct
+typedef struct SDIO_TypeDef
 {
   __IO uint32_t POWER;          /*!< SDIO power control register,    Address offset: 0x00 */
   __IO uint32_t CLKCR;          /*!< SDI clock control register,     Address offset: 0x04 */
@@ -1245,7 +1245,7 @@ typedef struct
   * @brief Serial Peripheral Interface
   */
 
-typedef struct
+typedef struct SPI_TypeDef
 {
   __IO uint16_t CR1;        /*!< SPI control register 1 (not used in I2S mode),      Address offset: 0x00 */
   uint16_t      RESERVED0;  /*!< Reserved, 0x02                                                           */
@@ -1271,7 +1271,7 @@ typedef struct
   * @brief TIM
   */
 
-typedef struct
+typedef struct TIM_TypeDef
 {
   __IO uint16_t CR1;         /*!< TIM control register 1,              Address offset: 0x00 */
   uint16_t      RESERVED0;   /*!< Reserved, 0x02                                            */
@@ -1315,7 +1315,7 @@ typedef struct
   * @brief Universal Synchronous Asynchronous Receiver Transmitter
   */
  
-typedef struct
+typedef struct USART_TypeDef
 {
   __IO uint16_t SR;         /*!< USART Status register,                   Address offset: 0x00 */
   uint16_t      RESERVED0;  /*!< Reserved, 0x02                                                */
@@ -1337,7 +1337,7 @@ typedef struct
   * @brief Window WATCHDOG
   */
 
-typedef struct
+typedef struct WWDG_TypeDef
 {
   __IO uint32_t CR;   /*!< WWDG Control register,       Address offset: 0x00 */
   __IO uint32_t CFR;  /*!< WWDG Configuration register, Address offset: 0x04 */
@@ -1348,7 +1348,7 @@ typedef struct
   * @brief Crypto Processor
   */
 
-typedef struct
+typedef struct CRYP_TypeDef
 {
   __IO uint32_t CR;         /*!< CRYP control register,                                    Address offset: 0x00 */
   __IO uint32_t SR;         /*!< CRYP status register,                                     Address offset: 0x04 */
@@ -1392,7 +1392,7 @@ typedef struct
   * @brief HASH
   */
   
-typedef struct 
+typedef struct HASH_TypeDef
 {
   __IO uint32_t CR;               /*!< HASH control register,          Address offset: 0x00        */
   __IO uint32_t DIN;              /*!< HASH data input register,       Address offset: 0x04        */
@@ -1408,7 +1408,7 @@ typedef struct
   * @brief HASH_DIGEST
   */
   
-typedef struct 
+typedef struct HASH_DIGEST_TypeDef
 {
   __IO uint32_t HR[8];     /*!< HASH digest registers,          Address offset: 0x310-0x32C */ 
 } HASH_DIGEST_TypeDef;
@@ -1417,7 +1417,7 @@ typedef struct
   * @brief RNG
   */
   
-typedef struct 
+typedef struct RNG_TypeDef
 {
   __IO uint32_t CR;  /*!< RNG control register, Address offset: 0x00 */
   __IO uint32_t SR;  /*!< RNG status register,  Address offset: 0x04 */
@@ -1432,7 +1432,7 @@ typedef struct
   * @brief OTG
   */
   
-typedef struct 
+typedef struct OTG_Core_TypeDef
 {
   __IO uint32_t GOTGCTL;  /*!< OTG control and status register,                     Address offset: 0x000 */
   __IO uint32_t GOTGINT;  /*!< OTG interrupt register,                              Address offset: 0x004 */
@@ -1460,7 +1460,7 @@ typedef struct
   };
 } OTG_Core_TypeDef;
 
-typedef struct
+typedef struct OTG_Host_Channel_TypeDef
 {
     __IO uint32_t HCCHAR;   /*!< OTG host channel characteristics register, Address offset: 0x100 + 0x020*num */
     __IO uint32_t HCSPLT;   /*!< OTG host channel split control register,   Address offset: 0x104 + 0x020*num */
@@ -1471,7 +1471,7 @@ typedef struct
     __IO uint32_t RESERVED[2]; /*!< Reserved, 0x118 + 0x020*num - 0x11C + 0x020*num                          */
 } OTG_Host_Channel_TypeDef;
 
-typedef struct
+typedef struct OTG_Host_TypeDef
 {
   __IO uint32_t HCFG;     /*!< OTG host configuration register,                       Address offset: 0x000 */
   __IO uint32_t HFIR;     /*!< OTG host frame interval register,                      Address offset: 0x004 */
@@ -1486,7 +1486,7 @@ typedef struct
   OTG_Host_Channel_TypeDef channels[12];
 } OTG_Host_TypeDef;
 
-typedef struct 
+typedef struct OTG_Dev_TypeDef
 {
   __IO uint32_t DCFG;         /*!< OTG device configuration register,                         Address offset: 0x000 */
   __IO uint32_t DCTL;         /*!< OTG device control register,                               Address offset: 0x004 */
@@ -1508,7 +1508,7 @@ typedef struct
        uint32_t RESERVED4[15]; /*!< Reserved, 0x048-0x080                                                          */
   __IO uint32_t DOEPEACHMSK1; /*!< OTG device each OUT endpoint-1 interrupt mask register,    Address offset: 0x084 */
        uint32_t RESERVED5[30]; /*!< Reserved, 0x084-0x0FC                                                          */
-  struct {
+  struct OTG_IEndpoint_TypeDef {
     __IO uint32_t DIEPCTL;  /*!< OTG device endpoint control register,                  Address offset: 0x100 + 0x020*num */
          uint32_t RESERVED0; /*!< Reserved, 0x104 + 0x020*num                                            */
     __IO uint32_t DIEPINT;  /*!< OTG device endpoint interrupt register,                Address offset: 0x108 + 0x020*num */
@@ -1518,7 +1518,7 @@ typedef struct
     __IO uint32_t DTXFSTS;   /*!< OTG device IN endpoint transmit fifo status register, Address offset: 0x118 + 0x020*num */
          uint32_t RESERVED3; /*!< Reserved, 0x11C + 0x020*num                          */
   } iendpoints[16];
-  struct {
+  struct OTG_OEndpoint_TypeDef {
     __IO uint32_t DOEPCTL;   /*!< OTG device control OUT endpoint control register,         Address offset: 0x300 */
          uint32_t RESERVED0; /*!< Reserved, 0x304 + 0x020*num                                            */
     __IO uint32_t DOEPINT;  /*!< OTG device endpoint interrupt register, Address offset: 0x308 + 0x020*num */
@@ -1529,12 +1529,12 @@ typedef struct
   } oendpoints[16];
 } OTG_Dev_TypeDef;
 
-typedef struct 
+typedef struct OTG_PWR_TypeDef
 {
   __IO uint32_t PCGCCTL;  /*!< OTG power and clock gating control register, Address offset: 0x00 */
 } OTG_PWR_TypeDef;
 
-typedef struct 
+typedef struct OTG_EP_TypeDef
 {
   struct {
   __IO uint32_t DFIFO[0x400];  /*!< OTG FIFO */
