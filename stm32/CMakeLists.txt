@@ -41,53 +41,53 @@ function(enable_unity_build UB_SUFFIX SOURCE_VARIABLE_NAME)
 endfunction(enable_unity_build)
 
 include_directories(
-  ./
+  include
   )
 
 set(TESTER_CSRCS
-  tester.cpp
-  syscallscommon.c
-  syscallstester.c
-  assert.c
-  system_stm32f4xx.c
-  stm32f4xx_gpio.c
-  stm32f4xx_rcc.c
-  stm32f4xx_spi.c
-  stm32f4xx_tim.c
+  src/tester.cpp
+  src/sys/syscallscommon.c
+  src/sys/syscallstester.c
+  src/sys/assert.c
+  src/bsp/system_stm32f4xx.c
+  src/bsp/stm32f4xx_gpio.c
+  src/bsp/stm32f4xx_rcc.c
+  src/bsp/stm32f4xx_spi.c
+  src/bsp/stm32f4xx_tim.c
   )
 
 set(MAIN_CSRCS
-  main.cpp
-  timer.cpp
-  fpga_comm.cpp
-  sdio.c
-  sdcard.cpp
-  msd.cpp
-  fat.cpp
-  syscallscommon.c
-  syscallscpp.cpp
-  cppsupport.cpp
-  assert.c
-  font.c
-  fdc.cpp
-  dsk.cpp
-  usb.cpp
-  lang.cpp
-  system_stm32f4xx.c
-#  stm32f4xx_crc.c
-#  stm32f4xx_dbgmcu.c
-  stm32f4xx_dma.c
-  stm32f4xx_exti.c
-  stm32f4xx_flash.c
-  stm32f4xx_gpio.c
-  stm32f4xx_rcc.c
-#  stm32f4xx_rng.c
-#  stm32f4xx_rtc.c
-  stm32f4xx_sdio.c
-  stm32f4xx_spi.c
-  stm32f4xx_syscfg.c
-#  stm32f4xx_tim.c
-  misc.c
+  src/main.cpp
+  src/timer.cpp
+  src/fpga/fpga_comm.cpp
+  src/block/sdio.c
+  src/block/sdcard.cpp
+  src/block/msd.cpp
+  src/fs/fat.cpp
+  src/sys/syscallscommon.c
+  src/sys/syscallscpp.cpp
+  src/sys/cppsupport.cpp
+  src/sys/assert.c
+  src/fpga/font.c
+  src/fdc/fdc.cpp
+  src/fdc/dsk.cpp
+  src/usb/usb.cpp
+  src/lang.cpp
+  src/bsp/system_stm32f4xx.c
+#  src/bsp/stm32f4xx_crc.c
+#  src/bsp/stm32f4xx_dbgmcu.c
+  src/bsp/stm32f4xx_dma.c
+  src/bsp/stm32f4xx_exti.c
+  src/bsp/stm32f4xx_flash.c
+  src/bsp/stm32f4xx_gpio.c
+  src/bsp/stm32f4xx_rcc.c
+#  src/bsp/stm32f4xx_rng.c
+#  src/bsp/stm32f4xx_rtc.c
+  src/bsp/stm32f4xx_sdio.c
+  src/bsp/stm32f4xx_spi.c
+  src/bsp/stm32f4xx_syscfg.c
+#  src/bsp/stm32f4xx_tim.c
+  src/bsp/misc.c
   )
 
 #enable_unity_build(ubtester TESTER_CSRCS)
@@ -96,17 +96,14 @@ set(MAIN_CSRCS
 enable_language(ASM)
 
 add_executable(tester
-  startup_stm32f40xx.s
+  src/bsp/startup_stm32f40xx.s
   ${TESTER_CSRCS}
   )
 
 add_executable(main
-  startup_stm32f40xx.s
+  src/bsp/startup_stm32f40xx.s
   ${MAIN_CSRCS}
   )
-
-set_source_files_properties(startup_stm32f10x_md.c PROPERTIES
-  COMPILE_FLAGS "-fno-builtin")
 
 set_target_properties(main PROPERTIES
   LINK_DEPENDS "${STM32_SOURCE_DIR}/link.ld"
@@ -116,5 +113,3 @@ set_target_properties(tester PROPERTIES
   LINK_DEPENDS "${STM32_SOURCE_DIR}/link.ld"
   LINK_FLAGS "-T \"${STM32_SOURCE_DIR}/link.ld\" -nostartfiles -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -O2 -Wl,--gc-section")
 
-#add_custom_target(flash openocd -f ${STM32_SOURCE_DIR}/openocd.cfg
-#                  DEPENDS ${FO})
