@@ -72,6 +72,8 @@ set(MAIN_CSRCS
   src/fdc/fdc.cpp
   src/fdc/dsk.cpp
   src/usb/usb.cpp
+  src/usb/usbchannel.cpp
+  src/usb/usbdevice.cpp
   src/lang.cpp
   src/bsp/system_stm32f4xx.c
 #  src/bsp/stm32f4xx_crc.c
