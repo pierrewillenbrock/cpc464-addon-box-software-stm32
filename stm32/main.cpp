@@ -23,6 +23,7 @@
 #include "font.h"
 #include "fdc.h"
 #include "sprite.h"
+#include "usb.h"
 
 #define LEDR_PIN GPIO_Pin_3
 #define LEDG_PIN GPIO_Pin_2
@@ -119,7 +120,7 @@ void SysClk_Setup() {
 	//VCO_OUT/P = 168MHz
 	//VCO_OUT = 336
 	//N: 192 - 432 => 336
-	//P: 2,4,6,8   => 2 => 2SYSCLK = 168
+	//P: 2,4,6,8   => 2 => SYSCLK = 168
 	//Q: 4-16      => 7 => PLL48CLK = 48
 	RCC_PLLConfig(RCC_PLLSource_HSE, 16, 336, 2, 7);
 	RCC_PLLCmd(ENABLE);
@@ -426,6 +427,8 @@ int main()
 	FPGAComm_Setup();
 	FAT_Setup();
 	SDcard_Setup();
+
+	USB_Setup();
 
 	while(1) {
 		char name[6] = {0xff, 0}; //name and revision

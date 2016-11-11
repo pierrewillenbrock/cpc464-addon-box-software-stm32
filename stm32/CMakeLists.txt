@@ -7,25 +7,6 @@ cmake_minimum_required(VERSION 2.6)
 set(COMPILE_DEFINITIONS_DEBUG    -O1 -ggdb)
 set(COMPILE_DEFINITIONS_RELEASE  -O1)
 
-#macro for stripping executables to flashable image
-macro(OBJCOPY_FILE EXE_NAME)
- set(FO ${CMAKE_CURRENT_BINARY_DIR}/${EXE_NAME}.bin)
- set(FI ${CMAKE_CURRENT_BINARY_DIR}/${EXE_NAME})
- message(STATUS ${FO})
- add_custom_command(
-  OUTPUT "${FO}"
-  COMMAND ${CMAKE_OBJCOPY}
-  ARGS -O binary ${FI} ${FO}
-  DEPENDS ${FI})
- get_filename_component(TGT "${EXE_NAME}" NAME)
- add_custom_target("TargetObjCopy_${TGT}" ALL DEPENDS ${FO} VERBATIM)
- get_directory_property(extra_clean_files ADDITIONAL_MAKE_CLEAN_FILES)
- set_directory_properties(
-  PROPERTIES
-  ADDITIONAL_MAKE_CLEAN_FILES "${extra_clean_files};${FO}")
- set_source_files_properties("${FO}" PROPERTIES GENERATED TRUE)
-endmacro(OBJCOPY_FILE)
-
 add_definitions(
   -DSTM32F40_41xxx -DUSE_STDPERIPH_DRIVER -DUSE_FULL_ASSERT
   -DHSE_VALUE=16000000
@@ -90,6 +71,8 @@ set(MAIN_CSRCS
   font.c
   fdc.cpp
   dsk.cpp
+  usb.cpp
+  lang.cpp
   system_stm32f4xx.c
 #  stm32f4xx_crc.c
 #  stm32f4xx_dbgmcu.c
@@ -129,13 +112,9 @@ set_target_properties(main PROPERTIES
   LINK_DEPENDS "${STM32_SOURCE_DIR}/link.ld"
   LINK_FLAGS "-T \"${STM32_SOURCE_DIR}/link.ld\" -nostartfiles -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -O2 -Wl,--gc-section")
 
-objcopy_file(main)
-
 set_target_properties(tester PROPERTIES
   LINK_DEPENDS "${STM32_SOURCE_DIR}/link.ld"
   LINK_FLAGS "-T \"${STM32_SOURCE_DIR}/link.ld\" -nostartfiles -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -O2 -Wl,--gc-section")
-
-objcopy_file(tester)
 
 #add_custom_target(flash openocd -f ${STM32_SOURCE_DIR}/openocd.cfg
 #                  DEPENDS ${FO})

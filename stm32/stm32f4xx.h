@@ -1428,6 +1428,123 @@ typedef struct
   * @}
   */
   
+/** 
+  * @brief OTG
+  */
+  
+typedef struct 
+{
+  __IO uint32_t GOTGCTL;  /*!< OTG control and status register,                     Address offset: 0x000 */
+  __IO uint32_t GOTGINT;  /*!< OTG interrupt register,                              Address offset: 0x004 */
+  __IO uint32_t GAHBCFG;  /*!< OTG AHB configuration register,                      Address offset: 0x008 */
+  __IO uint32_t GUSBCFG;  /*!< OTG USB configuration register,                      Address offset: 0x00C */
+  __IO uint32_t GRSTCTL;  /*!< OTG reset register,                                  Address offset: 0x010 */
+  __IO uint32_t GINTSTS;  /*!< OTG core interrupt register,                         Address offset: 0x014 */
+  __IO uint32_t GINTMSK;  /*!< OTG interrupt mask register,                         Address offset: 0x018 */
+  __IO uint32_t GRXSTSR;  /*!< OTG receive status debug read register,              Address offset: 0x01C */
+  __IO uint32_t GRXSTSP;  /*!< OTG receive status read and pop register,            Address offset: 0x020 */
+  __IO uint32_t GRXFSIZ;  /*!< OTG receive fifo size register,                      Address offset: 0x024 */
+  union {
+  __IO uint32_t HNPTXFSIZ;/*!< OTG nonperiodic transmit fifo size register,         Address offset: 0x028 */
+  __IO uint32_t DIEPTXF0; /*!< OTG Endpoint 0 transmit fifo size register,          Address offset: 0x028 */
+  };
+  __IO uint32_t GNPTXSTS; /*!< OTG nonperiodic transmit fifo/queue status register, Address offset: 0x02C */
+  __IO uint32_t GI2CCTL;  /*!< OTG I²C access register,                             Address offset: 0x030 */
+       uint32_t RESERVED0; /*!< Reserved, 0x034                                                           */
+  __IO uint32_t GCCFG;    /*!< OTG general core configuration register,             Address offset: 0x038 */
+  __IO uint32_t CID;      /*!< OTG core ID register,                                Address offset: 0x03C */
+       uint32_t RESERVED1[48]; /*!< Reserved, 0x040-0x0FC                                                 */
+  union {
+  __IO uint32_t HPTXFSIZ; /*!< OTG host periodic transfer fifo size register,       Address offset: 0x100 */
+  __IO uint32_t DIEPTXF[8]; /*!< OTG host periodic transfer fifo size register,       Address offset: 0x100 */
+  };
+} OTG_Core_TypeDef;
+
+typedef struct
+{
+    __IO uint32_t HCCHAR;   /*!< OTG host channel characteristics register, Address offset: 0x100 + 0x020*num */
+    __IO uint32_t HCSPLT;   /*!< OTG host channel split control register,   Address offset: 0x104 + 0x020*num */
+    __IO uint32_t HCINT;    /*!< OTG host channel interrupt register,       Address offset: 0x108 + 0x020*num */
+    __IO uint32_t HCINTMSK; /*!< OTG host channel interrupt mask register,  Address offset: 0x10C + 0x020*num */
+    __IO uint32_t HCTSIZ;   /*!< OTG host channel transfer size register,   Address offset: 0x110 + 0x020*num */
+    __IO uint32_t HCDMA;    /*!< OTG host channel DMA address register,     Address offset: 0x114 + 0x020*num */
+    __IO uint32_t RESERVED[2]; /*!< Reserved, 0x118 + 0x020*num - 0x11C + 0x020*num                          */
+} OTG_Host_Channel_TypeDef;
+
+typedef struct
+{
+  __IO uint32_t HCFG;     /*!< OTG host configuration register,                       Address offset: 0x000 */
+  __IO uint32_t HFIR;     /*!< OTG host frame interval register,                      Address offset: 0x004 */
+  __IO uint32_t HFNUM;    /*!< OTG host frame number/frame time remaining register,   Address offset: 0x008 */
+       uint32_t RESERVED0; /*!< Reserved, 0x00C                                                             */
+  __IO uint32_t HPTXSTS;  /*!< OTG host periodic transmit fifo/queue status register, Address offset: 0x010 */
+  __IO uint32_t HAINT;    /*!< OTG host all channels interrupt register,              Address offset: 0x014 */
+  __IO uint32_t HAINTMSK; /*!< OTG host all channels interrupt mask register,         Address offset: 0x018 */
+       uint32_t RESERVED1[9]; /*!< Reserved, 0x01C-0x03C                                                  */
+  __IO uint32_t HPRT;     /*!< OTG host port control and status register,             Address offset: 0x040 */
+       uint32_t RESERVED2[47]; /*!< Reserved, 0x044-0x100                                                  */
+  OTG_Host_Channel_TypeDef channels[12];
+} OTG_Host_TypeDef;
+
+typedef struct 
+{
+  __IO uint32_t DCFG;         /*!< OTG device configuration register,                         Address offset: 0x000 */
+  __IO uint32_t DCTL;         /*!< OTG device control register,                               Address offset: 0x004 */
+  __IO uint32_t DSTS;         /*!< OTG device status register,                                Address offset: 0x008 */
+       uint32_t RESERVED0;    /*!< Reserved, 0x00C                                                               */
+  __IO uint32_t DIEPMSK;      /*!< OTG device IN endpoint common interrupt mask register,     Address offset: 0x010 */
+  __IO uint32_t DOEPMSK;      /*!< OTG device OUT endpoint common interrupt mask register,    Address offset: 0x014 */
+  __IO uint32_t DAINT;        /*!< OTG device all channels interrupt register,                Address offset: 0x018 */
+  __IO uint32_t DAINTMSK;     /*!< OTG device all channels interrupt mask register,           Address offset: 0x01C */
+       uint32_t RESERVED1[2]; /*!< Reserved, 0x020-0x24                                                          */
+  __IO uint32_t DVBUSDIS;     /*!< OTG device VBUS discharge time register,                   Address offset: 0x028 */
+  __IO uint32_t DVBUSPULSE;   /*!< OTG device VBUS pulsing time register,                     Address offset: 0x02C */
+       uint32_t RESERVED2;    /*!< Reserved, 0x030                                                                  */
+  __IO uint32_t DIEPEMPMSK;   /*!< OTG device IN endpoint FIFO empty interrupt mask register, Address offset: 0x034 */
+  __IO uint32_t EACHHINT;     /*!< OTG device each endpoint interrupt register,               Address offset: 0x038 */
+  __IO uint32_t EACHHINTMSK;  /*!< OTG device each endpoint interrupt mask register,          Address offset: 0x03C */
+       uint32_t RESERVED3;    /*!< Reserved, 0x040                                                                  */
+  __IO uint32_t DIEPEACHMSK1; /*!< OTG device each IN endpoint-1 interrupt mask register,     Address offset: 0x044 */
+       uint32_t RESERVED4[15]; /*!< Reserved, 0x048-0x080                                                          */
+  __IO uint32_t DOEPEACHMSK1; /*!< OTG device each OUT endpoint-1 interrupt mask register,    Address offset: 0x084 */
+       uint32_t RESERVED5[30]; /*!< Reserved, 0x084-0x0FC                                                          */
+  struct {
+    __IO uint32_t DIEPCTL;  /*!< OTG device endpoint control register,                  Address offset: 0x100 + 0x020*num */
+         uint32_t RESERVED0; /*!< Reserved, 0x104 + 0x020*num                                            */
+    __IO uint32_t DIEPINT;  /*!< OTG device endpoint interrupt register,                Address offset: 0x108 + 0x020*num */
+         uint32_t RESERVED1; /*!< Reserved, 0x10C + 0x020*num                                            */
+    __IO uint32_t DIEPTSIZ;  /*!< OTG device IN endpoint transfer size register,        Address offset: 0x110 + 0x020*num */
+    __IO uint32_t DIEPDMA;   /*!< OTG device IN endpoint dma address register,          Address offset: 0x114 + 0x020*num */
+    __IO uint32_t DTXFSTS;   /*!< OTG device IN endpoint transmit fifo status register, Address offset: 0x118 + 0x020*num */
+         uint32_t RESERVED3; /*!< Reserved, 0x11C + 0x020*num                          */
+  } iendpoints[16];
+  struct {
+    __IO uint32_t DOEPCTL;   /*!< OTG device control OUT endpoint control register,         Address offset: 0x300 */
+         uint32_t RESERVED0; /*!< Reserved, 0x304 + 0x020*num                                            */
+    __IO uint32_t DOEPINT;  /*!< OTG device endpoint interrupt register, Address offset: 0x308 + 0x020*num */
+         uint32_t RESERVED1; /*!< Reserved, 0x30C + 0x020*num                                            */
+    __IO uint32_t DOEPTSIZ;  /*!< OTG device OUT endpoint transfer size register, Address offset: 0x310 + 0x020*num */
+    __IO uint32_t DOEPDMA;   /*!< OTG device OUT endpoint dma address register,          Address offset: 0x314 + 0x020*num */
+         uint32_t RESERVED2[2]; /*!< Reserved, 0x318 + 0x020*num - 0x31C + 0x020*num                          */
+  } oendpoints[16];
+} OTG_Dev_TypeDef;
+
+typedef struct 
+{
+  __IO uint32_t PCGCCTL;  /*!< OTG power and clock gating control register, Address offset: 0x00 */
+} OTG_PWR_TypeDef;
+
+typedef struct 
+{
+  struct {
+  __IO uint32_t DFIFO[0x400];  /*!< OTG FIFO */
+  } endpoints[16];
+} OTG_EP_TypeDef;
+
+/**
+  * @}
+  */
+  
 /** @addtogroup Peripheral_memory_map
   * @{
   */
@@ -1561,8 +1678,22 @@ typedef struct
 #define ETH_PTP_BASE          (ETH_BASE + 0x0700)
 #define ETH_DMA_BASE          (ETH_BASE + 0x1000)
 #define DMA2D_BASE            (AHB1PERIPH_BASE + 0xB000)
+#define OTGH_BASE             (AHB1PERIPH_BASE + 0x20000)
+#define OTGH_CORE_BASE        (OTGH_BASE)
+#define OTGH_HOST_BASE        (OTGH_BASE + 0x00400)
+#define OTGH_DEV_BASE         (OTGH_BASE + 0x00800)
+#define OTGH_PWR_BASE         (OTGH_BASE + 0x00E00)
+#define OTGH_EP_BASE          (OTGH_BASE + 0x01000)
+#define OTGH_RAM_BASE         (OTGH_BASE + 0x20000)
 
 /*!< AHB2 peripherals */
+#define OTGF_BASE             (AHB2PERIPH_BASE + 0x00000)
+#define OTGF_CORE_BASE        (OTGF_BASE)
+#define OTGF_HOST_BASE        (OTGF_BASE + 0x00400)
+#define OTGF_DEV_BASE         (OTGF_BASE + 0x00800)
+#define OTGF_PWR_BASE         (OTGF_BASE + 0x00E00)
+#define OTGF_EP_BASE          (OTGF_BASE + 0x01000)
+#define OTGF_RAM_BASE         (OTGF_BASE + 0x20000)
 #define DCMI_BASE             (AHB2PERIPH_BASE + 0x50000)
 #define CRYP_BASE             (AHB2PERIPH_BASE + 0x60000)
 #define HASH_BASE             (AHB2PERIPH_BASE + 0x60400)
@@ -1685,6 +1816,16 @@ typedef struct
 #define DMA2_Stream7        ((DMA_Stream_TypeDef *) DMA2_Stream7_BASE)
 #define ETH                 ((ETH_TypeDef *) ETH_BASE)  
 #define DMA2D               ((DMA2D_TypeDef *)DMA2D_BASE)
+#define OTGH_CORE           ((OTG_Core_TypeDef *) OTGH_CORE_BASE)
+#define OTGH_HOST           ((OTG_Host_TypeDef *) OTGH_HOST_BASE)
+#define OTGH_DEV            ((OTG_Dev_TypeDef *) OTGH_DEV_BASE)
+#define OTGH_PWR            ((OTG_PWR_TypeDef *) OTGH_PWR_BASE)
+#define OTGH_EP             ((OTG_EP_TypeDef *) OTGH_EP_BASE)
+#define OTGF_CORE           ((OTG_Core_TypeDef *) OTGF_CORE_BASE)
+#define OTGF_HOST           ((OTG_Host_TypeDef *) OTGF_HOST_BASE)
+#define OTGF_DEV            ((OTG_Dev_TypeDef *) OTGF_DEV_BASE)
+#define OTGF_PWR            ((OTG_PWR_TypeDef *) OTGF_PWR_BASE)
+#define OTGF_EP             ((OTG_EP_TypeDef *) OTGF_EP_BASE)
 #define DCMI                ((DCMI_TypeDef *) DCMI_BASE)
 #define CRYP                ((CRYP_TypeDef *) CRYP_BASE)
 #define HASH                ((HASH_TypeDef *) HASH_BASE)
