@@ -1,0 +1,5 @@
+
+modified to be interrupt safe.
+mostly by checking for if() statements using internal state or pointer
+references. i did not check if the protected variables actually can be
+changed during the lifetime of the objects.
