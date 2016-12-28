@@ -296,31 +296,40 @@ struct FatDirInode : public FatInode {
 			if (ent.detect.state == 0xe5)
 				continue;
 			if (ent.detect.attributes == 0xf) {
-				if ((ent.longfilename.order & 0x3f) == 1)
+				//the long file name entries are stored in
+				//reverse order, i.E. the last one is first.
+				//last entry marker
+				if (ent.longfilename.order & 0x40)
 					long_name.clear();
+				uint16_t nm[13];
 				unsigned i = 0;
 				for(i = 0; i < 5; i++) {
 					if (ent.longfilename.name1[i] == 0)
 						break;
+					nm[i+0] = ent.longfilename.name1[i];
 				}
-				long_name += std::basic_string<uint16_t>
-					(ent.longfilename.name1,i);
-				if (i < 5)
+				if (i < 5) {
+					long_name = std::basic_string<uint16_t>
+						(nm,i+0) + long_name;
 					continue;
+				}
 				for(i = 0; i < 6; i++) {
 					if (ent.longfilename.name2[i] == 0)
 						break;
+					nm[i+5] = ent.longfilename.name2[i];
 				}
-				long_name += std::basic_string<uint16_t>
-					(ent.longfilename.name2,i);
-				if (i < 6)
+				if (i < 6) {
+					long_name = std::basic_string<uint16_t>
+						(nm,i+5) + long_name;
 					continue;
+				}
 				for(i = 0; i < 2; i++) {
 					if (ent.longfilename.name3[i] == 0)
 						break;
+					nm[i+11] = ent.longfilename.name3[i];
 				}
-				long_name += std::basic_string<uint16_t>
-					(ent.longfilename.name3,i);
+				long_name = std::basic_string<uint16_t>
+					(nm,11+i) + long_name;
 				continue;
 			}
 			if (ent.regular.attributes & 0x8) //volume label

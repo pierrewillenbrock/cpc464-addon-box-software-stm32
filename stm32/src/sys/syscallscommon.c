@@ -89,3 +89,4 @@ void __malloc_lock(struct _reent *r) {
 void __malloc_unlock(struct _reent *r) {
 	ISR_Enable(__malloc_lock_irqsave);
 }
+

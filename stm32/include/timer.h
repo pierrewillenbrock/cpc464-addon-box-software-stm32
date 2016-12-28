@@ -13,6 +13,8 @@ void Timer_Setup();
 uint32_t Timer_Oneshot(uint32_t usec, Timer_Func func, void* data);
 uint32_t Timer_Repeating(uint32_t usec, Timer_Func func, void* data);
 void Timer_Cancel(uint32_t handle);
+//in microseconds
+uint64_t Timer_timeSincePowerOn();
 
 #ifdef __cplusplus
  }

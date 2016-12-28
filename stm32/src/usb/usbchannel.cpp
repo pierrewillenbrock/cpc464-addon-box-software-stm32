@@ -1,27 +1,14 @@
 
 #include "usbchannel.hpp"
-#include <usb/usb.h>
-#include "usbdevice.hpp"
-#include "usbendpoint.hpp"
+
+#include <usb/usb.hpp>
+#include <usb/usbdevice.hpp>
+#include <usb/usbendpoint.hpp>
 #include "usbpriv.hpp"
 
 #include "usbdev.h"
 
 #include <bsp/stm32f4xx.h>
-#include <bsp/stm32f4xx_rcc.h>
-#include <irq.h>
-#include <timer.h>
-#include <lang.hpp>
-#include <bits.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <assert.h>
-#include <string.h>
-#include <deque>
-#include <vector>
-#include <array>
-#include <string>
-#include <unordered_map>
 
 static OTG_Core_TypeDef * const otgc = OTGF_CORE;
 static OTG_Host_TypeDef * const otgh = OTGF_HOST;
@@ -85,6 +72,7 @@ void USBChannel::NPTXPossible() {
 		case CtlSetupTXWait: state = CtlSetupTXResult; break;
 		case CtlDataTXWait: state = CtlDataTXResult; break;
 		case CtlStatusTXWait: state = CtlStatusTXResult; break;
+		default: assert(0); break;
 		}
 	} else {
 		data_remaining -= nt << 2;
@@ -111,10 +99,20 @@ void USBChannel::RXData(unsigned bcnt, unsigned dpid) {
 		bcnt -= c;
 	}
 	regs->HCCHAR = regs->HCCHAR;//trigger advance of channel state
-	current_urb->endpoint->device.dataToggleIN = dpid != 0x2;
+	current_urb->endpoint->dataToggleIN = dpid != 0x2;
 }
 
 void USBChannel::INT() {
+	/* observations:
+	   if (HCCHAR & 0xc0000000) == 0, trying to disable it will not
+	   create any irqs.
+	   if (HCCHAR & 0xc0000000) == 0xc0000000, the only thing that works
+           is disabling it(it does not disable by itself). emits an irq when
+	   done.
+	   if (HCCHAR & 0xc0000000) == 0x80000000, there will be an irq at some
+	   point.
+	   (HCCHAR & 0xc0000000) == 0x40000000 does not appear to happen.
+	 */
 	URB *u = current_urb;
 	if (regs->HCINT & OTG_HCINT_XFRC) {
 		regs->HCINT = OTG_HCINT_XFRC;
@@ -123,19 +121,25 @@ void USBChannel::INT() {
 		case TXResult:
 			//done.
 			//the channel disabled itself at this point.
-			current_urb->endpoint->device.dataToggleOUT =
+			current_urb->endpoint->dataToggleOUT =
 				((regs->HCTSIZ & 0x60000000) >> 29) != 0x2;
 			regs->HCINTMSK &= ~(OTG_HCINTMSK_XFRCM |
 					    OTG_HCINTMSK_TXERRM |
 					    OTG_HCINTMSK_NAKM |
 					    OTG_HCINTMSK_STALLM |
 					    OTG_HCINTMSK_CHHM);
-			state = Unused;
-			current_urb = NULL;
-			u->completion(0, u);
+			if (current_urb->endpoint->type != USBEndpoint::IRQ &&
+			    current_urb->endpoint->type != USBEndpoint::ISO) {
+				state = Unused;
+				current_urb = NULL;
+				u->completion(0, u);
+			} else {
+				state = PeriodicWait;
+				u->completion(0, u);
+			}
 			break;
 		case CtlSetupTXResult:
-			current_urb->endpoint->device.dataToggleOUT = true;
+			current_urb->endpoint->dataToggleOUT = true;
 			//the channel disabled itself at this point.
 			if (u->buffer_len > 0) {
 				if (u->setup.bmRequestType & 0x80) {
@@ -157,7 +161,7 @@ void USBChannel::INT() {
 			}
 			break;
 		case CtlDataTXResult:
-			current_urb->endpoint->device.dataToggleOUT =
+			current_urb->endpoint->dataToggleOUT =
 				((regs->HCTSIZ & 0x60000000) >> 29) != 0x2;
 			//the channel disabled itself at this point.
 			state = CtlStatusRXWait;
@@ -170,7 +174,7 @@ void USBChannel::INT() {
 			doOUTTransfer(u->buffer, 0);
 			break;
 		case CtlStatusTXResult:
-			current_urb->endpoint->device.dataToggleOUT =
+			current_urb->endpoint->dataToggleOUT =
 				((regs->HCTSIZ & 0x60000000) >> 29) != 0x2;
 			//fall through
 		case CtlStatusRXWait:
@@ -186,10 +190,16 @@ void USBChannel::INT() {
 					    OTG_HCINTMSK_NAKM |
 					    OTG_HCINTMSK_STALLM |
 					    OTG_HCINTMSK_CHHM);
-			state = Unused;
 			u->buffer_received = u->buffer_len - data_remaining;
-			current_urb = NULL;
-			u->completion(0, u);
+			if (current_urb->endpoint->type != USBEndpoint::IRQ &&
+			    current_urb->endpoint->type != USBEndpoint::ISO) {
+				state = Unused;
+				current_urb = NULL;
+				u->completion(0, u);
+			} else {
+				state = PeriodicWait;
+				u->completion(0, u);
+			}
 			break;
 		case TXWait: //failed for some reason. keep the chain going.
 		case CtlSetupTXWait:
@@ -207,6 +217,7 @@ void USBChannel::INT() {
 			current_urb = NULL;
 			u->completion(1, u);
 			break;
+		default: assert(0); break;
 		}
 	}
 	if (regs->HCINT & OTG_HCINT_TXERR) {
@@ -226,19 +237,31 @@ void USBChannel::INT() {
 	if (regs->HCINT & OTG_HCINT_STALL) {
 		//STALL during any part of a Control transfer means the device
 		//is unhappy with it and cannot proceed.
-
 		regs->HCINT = OTG_HCINT_STALL;
-		regs->HCINT = OTG_HCINT_CHH;
-		regs->HCCHAR |= OTG_HCCHAR_CHDIS;
-		regs->HCINTMSK &= ~(OTG_HCINTMSK_XFRCM |
-				    OTG_HCINTMSK_TXERRM |
-				    OTG_HCINTMSK_NAKM |
-				    OTG_HCINTMSK_STALLM);
-		regs->HCINTMSK |= OTG_HCINTMSK_CHHM;
-		state = Disabling;
-		u->buffer_received = u->buffer_len - data_remaining;
-		current_urb = NULL;
-		u->completion(1, u);
+		switch(state) {
+		case CtlDataRXWait:
+		case CtlStatusRXWait:
+			regs->HCINT = OTG_HCINT_CHH;
+			regs->HCCHAR |= OTG_HCCHAR_CHDIS;
+			regs->HCINTMSK &= ~(OTG_HCINTMSK_XFRCM |
+					    OTG_HCINTMSK_TXERRM |
+					    OTG_HCINTMSK_NAKM |
+					    OTG_HCINTMSK_STALLM);
+			regs->HCINTMSK |= OTG_HCINTMSK_CHHM;
+			state = Disabling;
+			u->buffer_received = u->buffer_len - data_remaining;
+			current_urb = NULL;
+			u->completion(1, u);
+			break;
+		case RXWait:
+			//only BULK and IRQ(and Control) can generate STALL
+			if (current_urb->endpoint->type == USBEndpoint::IRQ) {
+				state = PeriodicWait;
+			}
+			break;
+		default: assert(0); break;
+		}
+
 	}
 	if (regs->HCINT & OTG_HCINT_NAK) {
 		regs->HCINT = OTG_HCINT_NAK;
@@ -254,10 +277,24 @@ void USBChannel::INT() {
 		case CtlStatusRXWait:
 			doINTransfer(u->buffer, 0);
 			return;
+		case RXWait:
+			//only BULK and IRQ(and Control) can generate NAK
+			if (current_urb->endpoint->type == USBEndpoint::IRQ) {
+				//we need to shutdown the channel here.
+				regs->HCINT = OTG_HCINT_CHH;
+				regs->HCCHAR |= OTG_HCCHAR_CHDIS;
+				regs->HCINTMSK &= ~(OTG_HCINTMSK_XFRCM |
+						    OTG_HCINTMSK_TXERRM |
+						    OTG_HCINTMSK_NAKM |
+						    OTG_HCINTMSK_STALLM);
+				regs->HCINTMSK |= OTG_HCINTMSK_CHHM;
+				state = DisablingPeriodic;
+			}
+			break;
+		default: assert(0); break;
 		}
 
 		/*
-		regs->HCINT = OTG_HCINT_NAK;
 		regs->HCINT = OTG_HCINT_CHH;
 		regs->HCCHAR |= OTG_HCCHAR_CHDIS;
 		regs->HCINTMSK &= ~(OTG_HCINTMSK_XFRCM |
@@ -272,21 +309,31 @@ void USBChannel::INT() {
 		*/
 	}
 	if (regs->HCINT & OTG_HCINT_CHH) {
-		state = Unused;
-		otgh->HAINTMSK &= ~(1 << index);
 		regs->HCINT = OTG_HCINT_CHH;
 		regs->HCINTMSK &= ~OTG_HCINTMSK_CHHM;
-		//and now look at the queue.
-		URB *u = USB_getNextURB();
-		if (u)
-			setupForURB(u);
-		return;
+		switch(state) {
+		case Disabling:
+			state = Unused;
+			break;
+		case DisablingPeriodic:
+			state = PeriodicWait;
+			break;
+		default: assert(0); break;
+		}
+		if (state == Unused) {
+			otgh->HAINTMSK &= ~(1 << index);
+			//and now look at the queue.
+			URB *u = USB_getNextURB();
+			if (u)
+				setupForURB(u);
+			return;
+		}
 	}
 }
 
 void USBChannel::doSETUPTransfer() {
-	uint32_t hcchar = (current_urb->endpoint->device.address << 22)
-		| ((current_urb->endpoint->index & 0xf) << 11)
+	uint32_t hcchar = (current_urb->endpoint->device.eaddress << 22)
+		| ((current_urb->endpoint->address & 0xf) << 11)
 		| current_urb->endpoint->max_packet_length;
 	if ((otgh->HFNUM & 1) == 0)
 		hcchar |= OTG_HCCHAR_ODDFRM;
@@ -302,8 +349,8 @@ void USBChannel::doSETUPTransfer() {
 	regs->HCTSIZ = hctsiz;
 	regs->HCCHAR |= OTG_HCCHAR_CHENA;
 
-	current_urb->endpoint->device.dataToggleIN = true;
-	current_urb->endpoint->device.dataToggleOUT = true;
+	current_urb->endpoint->dataToggleIN = true;
+	current_urb->endpoint->dataToggleOUT = true;
 	//now we need to wait for enough space in the non-periodic tx fifo,
 	//write the 8 setup bytes and wait for a result.
 
@@ -314,8 +361,8 @@ void USBChannel::doSETUPTransfer() {
 }
 
 void USBChannel::doINTransfer(void *data, size_t xfrsiz) {
-	uint32_t hcchar = (current_urb->endpoint->device.address << 22)
-		| ((current_urb->endpoint->index & 0xf) << 11)
+	uint32_t hcchar = (current_urb->endpoint->device.eaddress << 22)
+		| ((current_urb->endpoint->address & 0xf) << 11)
 		| current_urb->endpoint->max_packet_length;
 	uint32_t hctsiz = 0;
 
@@ -328,7 +375,16 @@ void USBChannel::doINTransfer(void *data, size_t xfrsiz) {
 	case USBEndpoint::ISO: hcchar |= 0x40000; break;
 	case USBEndpoint::IRQ: hcchar |= 0xc0000; break;
 	}
-	hctsiz = current_urb->endpoint->device.dataToggleIN?0x40000000:0;
+	if (current_urb->buffer_len <=
+	    current_urb->endpoint->max_packet_length) {
+		hcchar |= 0x100000;
+	} else if (current_urb->buffer_len <=
+		   current_urb->endpoint->max_packet_length*2) {
+		hcchar |= 0x200000;
+	} else {
+		hcchar |= 0x300000;
+	}
+	hctsiz = current_urb->endpoint->dataToggleIN?0x40000000:0;
 	if (current_urb->endpoint->device.speed == USBSpeed::Low)
 		hcchar |= 0x20000;
 	//if it is evenly divisable, we need to add one more (empty) packet.
@@ -356,8 +412,8 @@ void USBChannel::doINTransfer(void *data, size_t xfrsiz) {
 }
 
 void USBChannel::doOUTTransfer(void *data, size_t xfrsiz) {
-	uint32_t hcchar = (current_urb->endpoint->device.address << 22)
-		| ((current_urb->endpoint->index & 0xf) << 11)
+	uint32_t hcchar = (current_urb->endpoint->device.eaddress << 22)
+		| ((current_urb->endpoint->address & 0xf) << 11)
 		| current_urb->endpoint->max_packet_length;
 	uint32_t hctsiz = 0;
 
@@ -370,7 +426,7 @@ void USBChannel::doOUTTransfer(void *data, size_t xfrsiz) {
 	case USBEndpoint::ISO: hcchar |= 0x40000; break;
 	case USBEndpoint::IRQ: hcchar |= 0xc0000; break;
 	}
-	hctsiz = current_urb->endpoint->device.dataToggleOUT?0x40000000:0;
+	hctsiz = current_urb->endpoint->dataToggleOUT?0x40000000:0;
 	if (current_urb->endpoint->device.speed == USBSpeed::Low)
 		hcchar |= 0x20000;
 	//if it is evenly divisable, we need to add one more (empty) packet.
@@ -411,8 +467,6 @@ void USBChannel::setupForURB(URB *u) {
 		doSETUPTransfer();
 		break;
 	case USBEndpoint::Bulk:
-	case USBEndpoint::ISO:
-	case USBEndpoint::IRQ:
 		if (u->endpoint->direction == USBEndpoint::DeviceToHost) {
 			state = RXWait;
 			doINTransfer(u->buffer, u->buffer_len);
@@ -421,7 +475,57 @@ void USBChannel::setupForURB(URB *u) {
 			doOUTTransfer(u->buffer, u->buffer_len);
 		}
 		break;
+		//todo: plan for ISO/IRQ: wait for SOF, which makes
+		//all channels push their payloads on the bus
+	case USBEndpoint::ISO:
+	case USBEndpoint::IRQ:
+		otgc->GINTMSK |= OTG_GINTMSK_SOFM;
+		state = PeriodicWait;
+		frameCounter = u->pollingInterval-1;
+		break;
 	}
 	otgh->HAINTMSK |= 1 << index;
 }
 
+void USBChannel::retireURB(URB *u) {
+	if (current_urb == u) {
+		if (regs->HCCHAR & OTG_HCCHAR_CHENA) {
+			regs->HCINT = OTG_HCINT_CHH;
+			regs->HCCHAR |= OTG_HCCHAR_CHDIS;
+			regs->HCINTMSK &= ~(OTG_HCINTMSK_XFRCM |
+					    OTG_HCINTMSK_TXERRM |
+					    OTG_HCINTMSK_NAKM |
+					    OTG_HCINTMSK_STALLM);
+			regs->HCINTMSK |= OTG_HCINTMSK_CHHM;
+			state = Disabling;
+		} else {
+			state = Unused;
+		}
+		current_urb = NULL;
+	}
+}
+
+void USBChannel::SOF() {
+	if (!current_urb)
+		return;
+	if (current_urb->endpoint->type != USBEndpoint::IRQ &&
+	    current_urb->endpoint->type != USBEndpoint::ISO)
+		return;
+	if (state != PeriodicWait)
+		return;
+	//okay, now we need to check if it is time to do a transfer.
+	frameCounter++;
+	if (frameCounter >= current_urb->pollingInterval) {
+		frameCounter = 0;
+		if (current_urb->endpoint->direction ==
+		    USBEndpoint::DeviceToHost) {
+			state = RXWait;
+			doINTransfer(current_urb->buffer,
+				     current_urb->buffer_len);
+		} else {
+			state = TXWait;
+			doOUTTransfer(current_urb->buffer,
+				      current_urb->buffer_len);
+		}
+	}
+}

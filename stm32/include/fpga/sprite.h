@@ -2,6 +2,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <sys/types.h>
 
 struct sprite_info {
 	uint16_t hpos;
@@ -13,3 +14,19 @@ struct sprite_info {
 	uint8_t doublesize:1;
 	uint8_t reserved:7;
 } __attribute__((packed));
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void sprite_set_palette(unsigned num, uint8_t const *data);
+void sprite_upload_palette();
+
+//if addr == ~0U, looks for space anywhere in the vmem
+//return ~0U if it could not find room.
+unsigned sprite_alloc_vmem(size_t size, unsigned align, unsigned addr);
+void sprite_free_vmem(unsigned addr);
+
+#ifdef __cplusplus
+}
+#endif

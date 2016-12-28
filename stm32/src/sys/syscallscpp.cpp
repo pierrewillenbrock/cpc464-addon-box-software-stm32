@@ -15,7 +15,7 @@
 #include <fs/vfs.hpp>
 #include <bits.h>
 
-struct File : public Refcounted  {
+struct File : public Refcounted<File>  {
 	RefPtr<Dentry> dentry;
 	int openflags;
 	size_t offset;
@@ -77,7 +77,7 @@ struct StdOutInode : public Inode {
 			return len;
 		}
 		memmove((void*)stdout_buffer,
-			(void*)(stdout_buffer+sizeof(stdout_buffer)-len),
+			(void*)(stdout_buffer+len),
 			sizeof(stdout_buffer)-len);
 		memcpy((void*)(stdout_buffer+sizeof(stdout_buffer)-len), ptr, len);
 		return len;
@@ -185,7 +185,7 @@ void VFS_Setup() {
 	d = new Dentry("stdout", devDentry);
 	devDentry->inode->mknod(d, S_IRWXU | S_IRWXG | S_IRWXO, stdout);
 	devDentry->insertChild(d);
-	fds[2] = fds[1] = new File(d, O_RDONLY);
+	fds[2] = fds[1] = new File(d, O_WRONLY);
 	RefPtr<Dentry> mediaDentry = new Dentry("media", rootDentry);
 	rootDentry->inode->mkdir(mediaDentry, S_IRWXU | S_IRWXG | S_IRWXO);
 	rootDentry->insertChild(mediaDentry);
@@ -281,6 +281,8 @@ static RefPtr<Dentry> findDentry(const char *file) {
 	RefPtr<Dentry> dp = findParentDentry(file, basename);
 	if (!dp->inode)
 		return RefPtr<Dentry>();
+	if (!*basename) //trailing / or root directory
+		return dp;
 	std::string nm(basename);
 	RefPtr<Dentry> dc = dp->lookup(nm);
 	if (!dc) {
@@ -471,7 +473,6 @@ DIR *opendir (const char *name) {
 }
 
 struct dirent *readdir (DIR *__dirp) {
-	ISR_Guard isrguard;
 	if (!__dirp)
 		return NULL;
 	RealDIR *dirp = (RealDIR*)__dirp;
@@ -499,36 +500,39 @@ struct dirent *readdir (DIR *__dirp) {
 		memcpy(dent->d_name,"..",3);
 		return dent;
 	}
-	if (dirp->dir->fully_populated) {
-		//we do it ourselves.
-		int i = 0;
-		for(auto it = dirp->dir->children.begin();
-		    it != dirp->dir->children.end(); it++,i++) {
-			if (i == dent->d_off + 1) {
-				dirp->dentstore.resize(sizeof(struct dirent)+it->first.size()+1);
-				dent = (struct dirent*)dirp->dentstore.data();
-				dent->d_off++;
-				if (S_ISBLK(it->second->inode->mode))
-					dent->d_type = DT_BLK;
-				if (S_ISCHR(it->second->inode->mode))
-					dent->d_type = DT_CHR;
-				if (S_ISDIR(it->second->inode->mode))
-					dent->d_type = DT_DIR;
-				if (S_ISFIFO(it->second->inode->mode))
-					dent->d_type = DT_FIFO;
-				if (S_ISLNK(it->second->inode->mode))
-					dent->d_type = DT_LNK;
-				if (S_ISREG(it->second->inode->mode))
-					dent->d_type = DT_REG;
-				if (S_ISSOCK(it->second->inode->mode))
-					dent->d_type = DT_SOCK;
-				memcpy(dent->d_name,
-				       it->first.c_str(),
-				       it->first.size()+1);
-				return dent;
+	{
+		ISR_Guard isrguard;
+		if (dirp->dir->fully_populated) {
+			//we do it ourselves.
+			int i = 0;
+			for(auto it = dirp->dir->children.begin();
+			    it != dirp->dir->children.end(); it++,i++) {
+				if (i == dent->d_off + 1) {
+					dirp->dentstore.resize(sizeof(struct dirent)+it->first.size()+1);
+					dent = (struct dirent*)dirp->dentstore.data();
+					dent->d_off++;
+					if (S_ISBLK(it->second->inode->mode))
+						dent->d_type = DT_BLK;
+					if (S_ISCHR(it->second->inode->mode))
+						dent->d_type = DT_CHR;
+					if (S_ISDIR(it->second->inode->mode))
+						dent->d_type = DT_DIR;
+					if (S_ISFIFO(it->second->inode->mode))
+						dent->d_type = DT_FIFO;
+					if (S_ISLNK(it->second->inode->mode))
+						dent->d_type = DT_LNK;
+					if (S_ISREG(it->second->inode->mode))
+						dent->d_type = DT_REG;
+					if (S_ISSOCK(it->second->inode->mode))
+						dent->d_type = DT_SOCK;
+					memcpy(dent->d_name,
+					       it->first.c_str(),
+					       it->first.size()+1);
+					return dent;
+				}
 			}
+			return NULL;
 		}
-		return NULL;
 	}
 
 	//need to ask the inode for help.
@@ -546,7 +550,13 @@ struct dirent *readdir (DIR *__dirp) {
 	if (!d) {
 		d = new Dentry(name, dirp->dir);
 		dirp->dir->inode->lookup(d);
-		dirp->dir->insertChild(d);
+		{
+			ISR_Guard isrguard;
+			if (!dirp->dir->lookup(name))
+				dirp->dir->insertChild(d);
+			else
+				d = NULL;
+		}
 	}
 	dirp->dentstore.resize(sizeof(struct dirent)+name.size()+1);
 	dent = (struct dirent*)dirp->dentstore.data();

@@ -1,29 +1,20 @@
 
-#include <usb/usb.h>
+#include <usb/usb.hpp>
 
 #include <bsp/stm32f4xx.h>
 #include <bsp/stm32f4xx_rcc.h>
 #include <irq.h>
 #include <timer.h>
-#include <lang.hpp>
-#include <bits.h>
-#include <stdlib.h>
-#include <stdio.h>
 #include <assert.h>
-#include <string.h>
 #include <deque>
-#include <vector>
+#include <bitset>
 #include <array>
-#include <string>
-#include <unordered_map>
 
 #include "usbdev.h"
-#include "usbproto.h"
 #include "usbchannel.hpp"
-#include "usbendpoint.hpp"
-#include "usbdevice.hpp"
+#include <usb/usbdevice.hpp>
 
-static USBDevice *rootDevice = NULL;
+static RefPtr<USBDevice> rootDevice = NULL;
 static volatile uint8_t usb_address = 1;
 
 struct USBDeviceActivation {
@@ -72,7 +63,7 @@ static void configureFifos() {
 		}
 	}
 	rx_size = fifo_size - ptx_size - nptx_size;
-	otgc->GRXFSIZ = rx_size; //todo: check if this is << 0 or << 16 (like the others)
+	otgc->GRXFSIZ = rx_size; //todo: check if this is << 0 or << 16 (like the others)(evidence points towards << 0)
 	otgc->HNPTXFSIZ = (nptx_size << 16) | (rx_size << 0);
 	otgc->HPTXFSIZ = (ptx_size << 16) | ((rx_size + nptx_size) << 0);
 }
@@ -99,7 +90,8 @@ static void USB_RegInit() {
 	otgc->GCCFG |= OTG_GCCFG_NOVBUSSENS;
 	otgc->GCCFG |= OTG_GCCFG_PWRDWN;
 
-	otgh->HPRT |= OTG_HPRT_PPWR;
+	otgh->HPRT |= OTG_HPRT_PPWR | OTG_HPRT_PENCHNG | OTG_HPRT_PENA
+		| OTG_HPRT_PCDET;
 
 	//setup fifos
 	configureFifos();
@@ -133,23 +125,46 @@ void USB_Setup() {
 	NVIC_Init(&nvicinit);
 
 	otgh->HCFG = OTG_HCFG_FSLSPCS_48MHZ;
-	otgh->HFIR = 48000;
 
 	USB_RegInit();
+	otgh->HFIR = 48000;
+}
+
+static std::vector<USBDriver *> usb_drivers;
+static std::deque<RefPtr<USBDevice> > usb_devices;
+
+void USB_registerDevice(USBDevice *device) {
+	ISR_Guard g;
+	usb_devices.push_back(device);
+	//go through the registered drivers and make them probe the device
+	//until one is found that is happy with it
+	for(auto &d : usb_drivers) {
+		d->probe(device);
+	}
+}
+
+void USB_unregisterDevice(USBDevice *device) {
+	ISR_Guard g;
+	for(auto it = usb_devices.begin(); it != usb_devices.end(); it++) {
+		if (*it == device) {
+			usb_devices.erase(it);
+			return;
+		}
+	}
+}
+
+void USB_registerDriver(USBDriver *driver) {
+	ISR_Guard g;
+	usb_drivers.push_back(driver);
+	for(auto &d : usb_devices) {
+		driver->probe(d);
+	}
 }
 
 /*
 void OTG_FS_WKUP_IRQHandler() { //do we need this one?
 }
 */
-
-static uint32_t timer_handle = 0;
-
-static void USB_PortResetTimer(void *unused) {
-	//okay, we held reset for long enough.
-	otgh->HPRT &= ~OTG_HPRT_PRST;
-	//irq getting emitted now.
-}
 
 void USB_submitURB(URB *u) {
 	//so, what do we do here?
@@ -168,6 +183,23 @@ void USB_submitURB(URB *u) {
 	USB_URBqueue.push_back(u);
 }
 
+void USB_retireURB(struct URB *u) {
+	ISR_Guard g;
+	for(auto &ch : channels) {
+		if (!ch.isUnused())
+			//if a channel is servicing this urb, it stops doing so
+			//otherwise, it does nothing.
+			ch.retireURB(u);
+	}
+	for(auto it = USB_URBqueue.begin(); it != USB_URBqueue.end(); it++) {
+		//if we found it in the queue still, just remove it.
+		if (*it == u) {
+			USB_URBqueue.erase(it);
+			break;
+		}
+	}
+}
+
 URB *USB_getNextURB() {
 	ISR_Guard g;
 	URB *u = NULL;
@@ -176,17 +208,6 @@ URB *USB_getNextURB() {
 		USB_URBqueue.pop_front();
 	}
 	return u;
-}
-
-uint8_t USB_getNextAddress() {
-	ISR_Guard g;
-	uint8_t addr = usb_address;
-	if (usb_address >= 127)
-		usb_address = 1;
-	else
-		usb_address++;
-	//todo: need to check if the address is unused, and continue to scan
-	//if not.
 }
 
 static void USB_queueDeviceActivation(void (*activate)(void*data),void *data) {
@@ -208,20 +229,42 @@ static void USB_queueDeviceActivation(void (*activate)(void*data),void *data) {
 		activate(data);
 }
 
-void USB_activationComplete(uint8_t address) {
-	//todo: note that we have a new device. maybe also store a handle
-	//to the device here? removal of a device is not handled yet!
+static std::bitset<128> used_addresses;
+
+void USB_activationComplete() {
 	{
 		ISR_Guard g;
 		if (USB_activationQueue.empty()) {
 			USB_activationCurrent.activate = NULL;
 			USB_activationCurrent.data = NULL;
-			return;
+		} else {
+			USB_activationCurrent = USB_activationQueue.front();
+			USB_activationQueue.pop_front();
 		}
-		USB_activationCurrent = USB_activationQueue.front();
-		USB_activationQueue.pop_front();
 	}
-	USB_activationCurrent.activate(USB_activationCurrent.data);
+	if (USB_activationCurrent.activate)
+		USB_activationCurrent.activate(USB_activationCurrent.data);
+}
+
+uint8_t USB_getNextAddress() {
+	ISR_Guard g;
+	uint8_t addr = 0;
+	if (usb_address == 0 || usb_address > 127)
+		usb_address = 1;
+	while(addr != 0 && !used_addresses[addr]) {
+		addr = usb_address;
+		if (usb_address >= 127)
+			usb_address = 1;
+		else
+			usb_address++;
+	}
+	used_addresses[addr] = true;
+	return addr;
+}
+
+void USB_deactivateAddress(uint8_t address) {
+	ISR_Guard g;
+	used_addresses[address] = false;
 }
 
 static void activateRootDevice(void *unused) {
@@ -237,6 +280,24 @@ static void activateRootDevice(void *unused) {
 	rootDevice->activate();
 }
 
+static uint32_t timer_handle = 0;
+
+static void USB_PortResetTimer(void *unused) {
+	//okay, we held reset for long enough.
+	uint32_t hprt = otgh->HPRT;
+	hprt &= ~(OTG_HPRT_PENCHNG|OTG_HPRT_PENA|OTG_HPRT_PCDET|OTG_HPRT_PRST);
+	otgh->HPRT = hprt;
+	//irq getting emitted now.
+}
+
+static void USB_PortResetBeginTimer(void *unused) {
+	uint32_t hprt = otgh->HPRT;
+	hprt &= ~(OTG_HPRT_PENCHNG|OTG_HPRT_PENA|OTG_HPRT_PCDET);
+	hprt |= OTG_HPRT_PRST;
+	otgh->HPRT = hprt;
+	timer_handle = Timer_Oneshot(11, USB_PortResetTimer, NULL);
+}
+
 void OTG_FS_IRQHandler() {
 	//this function serves three purposes:
 	//* handle the root port interrupts
@@ -250,9 +311,14 @@ void OTG_FS_IRQHandler() {
 			//or does the controller wait for us?
 			uint32_t hprt = otgh->HPRT;
 			hprt &= ~(OTG_HPRT_PENCHNG|OTG_HPRT_PENA|OTG_HPRT_PCDET);
-			hprt |= OTG_HPRT_PCDET | OTG_HPRT_PRST;
+			hprt |= OTG_HPRT_PCDET;
 			otgh->HPRT = hprt;
-			timer_handle = Timer_Oneshot(11, USB_PortResetTimer, NULL);
+			Timer_Cancel(timer_handle);
+			timer_handle = Timer_Oneshot(100, USB_PortResetBeginTimer, NULL);
+			if (rootDevice) {
+				rootDevice->disconnected();
+				rootDevice = NULL;
+			}
 			return;
 		}
 		if (otgh->HPRT & OTG_HPRT_PENCHNG) {
@@ -266,8 +332,20 @@ void OTG_FS_IRQHandler() {
 				    OTG_HPRT_PSPD_FS) {
 					if (otgh->HCFG != OTG_HCFG_FSLSPCS_48MHZ) {
 						otgh->HCFG = OTG_HCFG_FSLSPCS_48MHZ;
-						otgh->HFIR = 48000;
 						USB_RegInit();
+						otgh->HFIR = 48000;
+						//wait for the PCDET.
+						//takes only a few 10 loops.
+						while(! (otgh->HPRT & OTG_HPRT_PCDET)) { }
+						//clear irq, do a reset
+						//we avoid the 100ms timeout
+						//for debouncing here.
+						uint32_t hprt = otgh->HPRT;
+						hprt &= ~(OTG_HPRT_PENCHNG|OTG_HPRT_PENA);
+						hprt |= OTG_HPRT_PCDET;
+						hprt |= OTG_HPRT_PRST;
+						otgh->HPRT = hprt;
+						timer_handle = Timer_Oneshot(11, USB_PortResetTimer, NULL);
 						return;
 					}
 					//now we need to create the new device
@@ -276,8 +354,20 @@ void OTG_FS_IRQHandler() {
 				    OTG_HPRT_PSPD_LS) {
 					if (otgh->HCFG != OTG_HCFG_FSLSPCS_6MHZ) {
 						otgh->HCFG = OTG_HCFG_FSLSPCS_6MHZ;
-						otgh->HFIR = 6000;
 						USB_RegInit();
+						otgh->HFIR = 6000;
+						//wait for the PCDET.
+						//takes only a few 10 loops.
+						while(! (otgh->HPRT & OTG_HPRT_PCDET)) { }
+						//clear irq, do a reset
+						//we avoid the 100ms timeout
+						//for debouncing here.
+						uint32_t hprt = otgh->HPRT;
+						hprt &= ~(OTG_HPRT_PENCHNG|OTG_HPRT_PENA);
+						hprt |= OTG_HPRT_PCDET;
+						hprt |= OTG_HPRT_PRST;
+						otgh->HPRT = hprt;
+						timer_handle = Timer_Oneshot(11, USB_PortResetTimer, NULL);
 						return;
 					}
 					//now we need to create the new device
@@ -288,12 +378,13 @@ void OTG_FS_IRQHandler() {
 			} else {
 				if (otgh->HCFG != OTG_HCFG_FSLSPCS_48MHZ) {
 					otgh->HCFG = OTG_HCFG_FSLSPCS_48MHZ;
-					otgh->HFIR = 48000;
 					USB_RegInit();
+					otgh->HFIR = 48000;
 				}
-				rootDevice->state = USBDevice::Disconnected;
-				delete rootDevice;
-				rootDevice = NULL;
+				if (rootDevice) {
+					rootDevice->disconnected();
+					rootDevice = NULL;
+				}
 			}
 			return;
 		}
@@ -336,5 +427,12 @@ void OTG_FS_IRQHandler() {
 		}
 		return;
 	}
-	assert(0);
+	if (gintsts & OTG_GINTSTS_SOF) {
+		otgc->GINTSTS = OTG_GINTSTS_SOF;
+		for(auto & ch : channels)
+			ch.SOF();
+		return;
+	}
+	if (gintsts)
+		assert(0);
 }

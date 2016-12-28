@@ -1,6 +1,8 @@
 
 #include <fpga/font.h>
 #include <fpga/fpga_comm.h>
+#include <fpga/layout.h>
+#include <fpga/sprite.h>
 
 static uint8_t const font_desc[] = {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, //' '
@@ -101,16 +103,16 @@ static uint8_t const font_desc[] = {
 	0xcc, 0x33, 0xcc, 0x33, 0xcc, 0x33, 0xcc, 0x33,
 };
 
-//output buffer is 0x60*8=0x300 elements
-void font_compile(uint16_t *buffer) {
+//output buffer is 0x60*4=0x180 elements
+static void font_compile(uint32_t *buffer) {
 	//four consecutive symbols go into one tile.
 	//our source has 1x8 uint8_t/symbol, our destination has
-	//4x8 uint16_t/tile
+	//2x8 uint32_t/tile
 	unsigned i = 0;
 	unsigned j = 0;
 	while(i < sizeof(font_desc)/sizeof(font_desc[0])) {
 		for(unsigned k = 0; k < 8; k++) {
-			buffer[j+k*4+0] = 0x100 |
+			buffer[j+k*2+0] =
 				((font_desc[i+k+ 0] & 0x80) >> 7) |
 				((font_desc[i+k+ 8] & 0x80) >> 6) |
 				((font_desc[i+k+16] & 0x80) >> 5) |
@@ -118,17 +120,16 @@ void font_compile(uint16_t *buffer) {
 				((font_desc[i+k+ 0] & 0x40) >> 2) |
 				((font_desc[i+k+ 8] & 0x40) >> 1) |
 				((font_desc[i+k+16] & 0x40) >> 0) |
-				((font_desc[i+k+24] & 0x40) << 1);
-			buffer[j+k*4+1] = 0x100 |
-				((font_desc[i+k+ 0] & 0x20) >> 5) |
-				((font_desc[i+k+ 8] & 0x20) >> 4) |
-				((font_desc[i+k+16] & 0x20) >> 3) |
-				((font_desc[i+k+24] & 0x20) >> 2) |
-				((font_desc[i+k+ 0] & 0x10) >> 0) |
-				((font_desc[i+k+ 8] & 0x10) << 1) |
-				((font_desc[i+k+16] & 0x10) << 2) |
-				((font_desc[i+k+24] & 0x10) << 3);
-			buffer[j+k*4+2] = 0x100 |
+				((font_desc[i+k+24] & 0x40) << 1) |
+				((font_desc[i+k+ 0] & 0x20) << 11) |
+				((font_desc[i+k+ 8] & 0x20) << 12) |
+				((font_desc[i+k+16] & 0x20) << 13) |
+				((font_desc[i+k+24] & 0x20) << 14) |
+				((font_desc[i+k+ 0] & 0x10) << 16) |
+				((font_desc[i+k+ 8] & 0x10) << 17) |
+				((font_desc[i+k+16] & 0x10) << 18) |
+				((font_desc[i+k+24] & 0x10) << 19);
+			buffer[j+k*2+1] =
 				((font_desc[i+k+ 0] & 0x08) >> 3) |
 				((font_desc[i+k+ 8] & 0x08) >> 2) |
 				((font_desc[i+k+16] & 0x08) >> 1) |
@@ -136,32 +137,40 @@ void font_compile(uint16_t *buffer) {
 				((font_desc[i+k+ 0] & 0x04) << 2) |
 				((font_desc[i+k+ 8] & 0x04) << 3) |
 				((font_desc[i+k+16] & 0x04) << 4) |
-				((font_desc[i+k+24] & 0x04) << 5);
-			buffer[j+k*4+3] = 0x100 |
-				((font_desc[i+k+ 0] & 0x02) >> 1) |
-				((font_desc[i+k+ 8] & 0x02) >> 0) |
-				((font_desc[i+k+16] & 0x02) << 1) |
-				((font_desc[i+k+24] & 0x02) << 2) |
-				((font_desc[i+k+ 0] & 0x01) << 4) |
-				((font_desc[i+k+ 8] & 0x01) << 5) |
-				((font_desc[i+k+16] & 0x01) << 6) |
-				((font_desc[i+k+24] & 0x01) << 7);
+				((font_desc[i+k+24] & 0x04) << 5) |
+				((font_desc[i+k+ 0] & 0x02) << 15) |
+				((font_desc[i+k+ 8] & 0x02) << 16) |
+				((font_desc[i+k+16] & 0x02) << 17) |
+				((font_desc[i+k+24] & 0x02) << 18) |
+				((font_desc[i+k+ 0] & 0x01) << 19) |
+				((font_desc[i+k+ 8] & 0x01) << 20) |
+				((font_desc[i+k+16] & 0x01) << 21) |
+				((font_desc[i+k+24] & 0x01) << 22);
 		}
 
 		i += 1*8*4;
-		j += 4*8;
+		j += 2*8;
 	}
 }
 
 uint16_t font_tile_base;
 
-uint16_t font_upload(uint16_t position_after) {
-	uint16_t buf[0x300];
-	if (position_after & 0x1f)
-		position_after = (position_after & ~0x1f) + 0x20;
-	font_tile_base = (position_after >> 5) - 8;
+uint16_t font_upload() {
+	uint32_t buf[0x180];
+	uint16_t position_after = 0x7C0-0x180;
+	//try to allocate the memory, starting at the end.
+	while(position_after < 0x7C0) {
+		if (sprite_alloc_vmem(0x180, 0x10, position_after) ==
+		    position_after)
+			break;
+		position_after -= 0x10;
+	}
+	if (position_after >= 0x7C0-0x180)
+		return (uint16_t)~0U;
+	font_tile_base = (position_after >> 4) - 8;
 	font_compile(buf);
-	FPGAComm_CopyToFPGA(0x6000 + 2*position_after, buf, 0x300*2);
+	FPGAComm_CopyToFPGA(FPGA_GRPH_SPRITES_RAM + 4*position_after,
+			    buf, 0x180*4);
 	return position_after;
 }
 

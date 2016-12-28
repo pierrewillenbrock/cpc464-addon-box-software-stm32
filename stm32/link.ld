@@ -78,6 +78,7 @@ SECTIONS
             /* This is used by the startup in order to initialize the .bss secion */
          _ebss = . ;
     } >RAM
+   . = ALIGN(32);
    PROVIDE (_bheap = .);
  }
 
@@ -87,14 +88,14 @@ SECTIONS
 
 /*  Provide a default vector for any unhandled interrupts. */
 
-PROVIDE(NMIException = _default_handler);
-PROVIDE(HardFaultException = _default_handler);
-PROVIDE(MemManageException = _default_handler);
-PROVIDE(BusFaultException = _default_handler);
-PROVIDE(UsageFaultException = _default_handler);
-PROVIDE(DebugMonitor = _default_handler);
-PROVIDE(SVCHandler = _default_handler);
-PROVIDE(PendSVC = _default_handler);
+PROVIDE(NMI_Handler = _default_handler);
+PROVIDE(HardFault_Handler = _default_handler);
+PROVIDE(MemManage_Handler = _default_handler);
+PROVIDE(BusFault_Handler = _default_handler);
+PROVIDE(UsageFault_Handler = _default_handler);
+PROVIDE(DebugMon_Handler = _default_handler);
+PROVIDE(SVC_Handler = _default_handler);
+PROVIDE(PendSV_Handler = _default_handler);
 PROVIDE(SysTick_Handler = _default_handler);
 PROVIDE(WWDG_IRQHandler = _default_handler);
 PROVIDE(PVD_IRQHandler = _default_handler);

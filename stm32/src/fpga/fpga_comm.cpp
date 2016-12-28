@@ -1,5 +1,6 @@
 
 #include <fpga/fpga_comm.h>
+#include <fpga/layout.h>
 #include <bsp/stm32f4xx_gpio.h>
 #include <bsp/stm32f4xx_spi.h>
 #include <bsp/stm32f4xx_rcc.h>
@@ -79,7 +80,7 @@ void FPGAComm_Setup() {
 	spi_init.SPI_CPHA = SPI_CPHA_2Edge;
 	spi_init.SPI_NSS = SPI_NSS_Soft;
 	//interestingly, even /8 works reliably
-	spi_init.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_8;
+	spi_init.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_16;
 	spi_init.SPI_FirstBit = SPI_FirstBit_LSB;
 	SPI_Init(SPI_DEV, &spi_init);
 	SPI_Cmd(SPI_DEV, ENABLE);
@@ -112,14 +113,14 @@ void FPGAComm_Setup() {
 
 	//mostly to catch errors, transfer finish is by RX IRQ
 	nvicinit.NVIC_IRQChannel = SPI_IRQn;
-	nvicinit.NVIC_IRQChannelPreemptionPriority = 1;
+	nvicinit.NVIC_IRQChannelPreemptionPriority = 2;
 	nvicinit.NVIC_IRQChannelSubPriority = 3;
 	nvicinit.NVIC_IRQChannelCmd = ENABLE;
 	NVIC_Init(&nvicinit);
 
 	//TX_IRQ is not needed.
 	nvicinit.NVIC_IRQChannel = SPI_RX_DMA_IRQn;
-	nvicinit.NVIC_IRQChannelPreemptionPriority = 1;
+	nvicinit.NVIC_IRQChannelPreemptionPriority = 2;
 	nvicinit.NVIC_IRQChannelSubPriority = 3;
 	nvicinit.NVIC_IRQChannelCmd = ENABLE;
 	NVIC_Init(&nvicinit);
@@ -130,7 +131,7 @@ void FPGAComm_Setup() {
 	//work packages.
 }
 
-static void setupDMA(void *read_data, void const *write_data, uint16_t length) {
+static void setupDMA(void *read_data, void const *write_data, uint32_t length) {
 	static uint32_t dummy_read;
 	static uint32_t const dummy_write = 0xff;
 
@@ -184,6 +185,7 @@ static void setupDMA(void *read_data, void const *write_data, uint16_t length) {
 
 static void issueCommand(FPGAComm_Command *command) {
 	assert(!current_command);
+	assert(isRPtr(command));
 	current_command = command;
 
 	//nss
@@ -192,21 +194,27 @@ static void issueCommand(FPGAComm_Command *command) {
 	static uint32_t address;
 	address = command->address;
 	if (command->write_data)
-		address |= 0x8000; // set WE bit
+		address |= 0x800000; // set WE bit
 	else
-		address &= ~0x8000; // strip WE bit
+		address &= ~0x800000; // strip WE bit
 
 	command->state = 0;
 
-	setupDMA(NULL, &address, 2);
+	setupDMA(NULL, &address, 3);
 }
 
 void FPGAComm_ReadWriteCommand(FPGAComm_Command *command) {
 	ISR_Guard g;
-	if (!current_command) {
+	assert(isRPtr(command));
+	if (!current_command)
 		issueCommand(command);
-	} else
+	else {
+		for(auto &c : workqueue)
+		  assert(isRPtr(c));
 		workqueue.push_back(command);
+		for(auto &c : workqueue)
+		  assert(isRPtr(c));
+	}
 }
 
 struct FPGAComm_FPGAComm_Command {
@@ -215,12 +223,15 @@ struct FPGAComm_FPGAComm_Command {
 };
 
 static void FPGAComm_Completion(int result, FPGAComm_Command *command) {
+	assert(isRPtr(command));
 	FPGAComm_FPGAComm_Command *c = container_of(command, FPGAComm_FPGAComm_Command, command);
 	c->completed = 1;
 	command->completion = NULL;
 }
 
-void FPGAComm_CopyFromToFPGA(void *dest, uint16_t fpga, void const *src, size_t n) {
+void FPGAComm_CopyFromToFPGA(void *dest, uint32_t fpga, void const *src, size_t n) {
+	assert(isRWPtr(dest) || dest == NULL);
+	assert(isRPtr(src) || src == NULL);
 	FPGAComm_FPGAComm_Command comm;
 	comm.completed = 0;
 	comm.command.address = fpga;
@@ -236,11 +247,11 @@ void FPGAComm_CopyFromToFPGA(void *dest, uint16_t fpga, void const *src, size_t 
 	}
 }
 
-void FPGAComm_CopyToFPGA(uint16_t dest, void const *src, size_t n) {
+void FPGAComm_CopyToFPGA(uint32_t dest, void const *src, size_t n) {
 	FPGAComm_CopyFromToFPGA(NULL, dest, src, n);
 }
 
-void FPGAComm_CopyFromFPGA(void *dest, uint16_t src, size_t n) {
+void FPGAComm_CopyFromFPGA(void *dest, uint32_t src, size_t n) {
 	FPGAComm_CopyFromToFPGA(dest, src, NULL, n);
 }
 
@@ -256,17 +267,17 @@ static uint8_t FPGAComm_IRQ_mask = 0;
 
 void FPGAComm_EnableIRQs(unsigned int mask) {
 	FPGAComm_IRQ_mask |= mask;
-	FPGAComm_CopyToFPGA(0x7fff, &FPGAComm_IRQ_mask, 1);
+	FPGAComm_CopyToFPGA(FPGA_INT_IRQMSK, &FPGAComm_IRQ_mask, 1);
 }
 
 void FPGAComm_DisableIRQs(unsigned int mask) {
 	FPGAComm_IRQ_mask &= ~mask;
-	FPGAComm_CopyToFPGA(0x7fff, &FPGAComm_IRQ_mask, 1);
+	FPGAComm_CopyToFPGA(FPGA_INT_IRQMSK, &FPGAComm_IRQ_mask, 1);
 }
 
 void FPGAComm_EnableIRQs_nb(unsigned int mask, FPGAComm_Command *command) {
 	FPGAComm_IRQ_mask |= mask;
-	command->address = 0x7fff;
+	command->address = FPGA_INT_IRQMSK;
 	command->length = 1;
 	command->read_data = NULL;
 	command->write_data = &FPGAComm_IRQ_mask;
@@ -275,7 +286,7 @@ void FPGAComm_EnableIRQs_nb(unsigned int mask, FPGAComm_Command *command) {
 
 void FPGAComm_DisableIRQs_nb(unsigned int mask, FPGAComm_Command *command) {
 	FPGAComm_IRQ_mask &= ~mask;
-	command->address = 0x7fff;
+	command->address = FPGA_INT_IRQMSK;
 	command->length = 1;
 	command->read_data = NULL;
 	command->write_data = &FPGAComm_IRQ_mask;
@@ -287,7 +298,7 @@ static bool FPGAComm_IRQSeenAgain = false;
 static uint8_t FPGAComm_IRQ_status;
 static void FPGAComm_IRQFetch_Completion(int result, FPGAComm_Command *command);
 static FPGAComm_Command FPGAComm_IRQFetch_Command = {
-	.address = 0x7ffe,
+	.address = FPGA_INT_IRQSTS,
 	.length = 1,
 	.read_data = &FPGAComm_IRQ_status,
 	.write_data = NULL,
@@ -367,9 +378,16 @@ void SPI_RX_DMA_IRQHandler() {
 	ISR_Guard g;
 	current_command = NULL;
 	if (!workqueue.empty()) {
+		for(auto &c : workqueue)
+		  assert(isRPtr(c));
 		FPGAComm_Command *c = workqueue.front();
+		assert(isRPtr(c));
 		workqueue.pop_front();
+		for(auto &c : workqueue)
+		  assert(isRPtr(c));
 		issueCommand(c);
+		for(auto &c : workqueue)
+		  assert(isRPtr(c));
 	}
 }
 
@@ -390,9 +408,16 @@ void SPI_IRQHandler() {
 	ISR_Guard g;
 	current_command = NULL;
 	if (!workqueue.empty()) {
+		for(auto &c : workqueue)
+		  assert(isRPtr(c));
 		FPGAComm_Command *c = workqueue.front();
+		assert(isRPtr(c));
 		workqueue.pop_front();
+		for(auto &c : workqueue)
+		  assert(isRPtr(c));
 		issueCommand(c);
+		for(auto &c : workqueue)
+		  assert(isRPtr(c));
 	}
 }
 

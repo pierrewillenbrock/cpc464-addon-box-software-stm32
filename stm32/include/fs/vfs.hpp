@@ -8,7 +8,7 @@
 
 struct Dentry;
 
-struct Inode : public Refcounted {
+struct Inode : public Refcounted<Inode> {
 	mode_t mode;
 	off_t size;
 	Inode() : mode(0), size(0) {}
@@ -57,7 +57,7 @@ struct Inode : public Refcounted {
 	}
 };
 
-struct Dentry : public Refcounted  {
+struct Dentry : public Refcounted<Dentry>  {
 	std::string name;
 	RefPtr<Inode> inode;
 	RefPtr<Dentry> parent;

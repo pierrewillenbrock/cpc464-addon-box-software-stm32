@@ -4,8 +4,8 @@
 #include <stdint.h>
 
 struct FPGAComm_Command {
-	uint16_t address;
-	uint16_t length;
+	uint32_t address;
+	uint32_t length;
 	void *read_data;
 	void const *write_data;
 	//completion is allowed to be NULL
@@ -20,9 +20,9 @@ extern "C" {
 
 void FPGAComm_Setup();
 void FPGAComm_ReadWriteCommand(struct FPGAComm_Command *command);
-void FPGAComm_CopyToFPGA(uint16_t dest, void const *src, size_t n);
-void FPGAComm_CopyFromFPGA(void *dest, uint16_t src, size_t n);
-void FPGAComm_CopyFromToFPGA(void *dest, uint16_t fpga, void const *src,
+void FPGAComm_CopyToFPGA(uint32_t dest, void const *src, size_t n);
+void FPGAComm_CopyFromFPGA(void *dest, uint32_t src, size_t n);
+void FPGAComm_CopyFromToFPGA(void *dest, uint32_t fpga, void const *src,
 			     size_t n);
 void FPGAComm_SetIRQHandler(unsigned int num, void (*handler)(void *),
 			    void *data);

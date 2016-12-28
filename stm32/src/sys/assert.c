@@ -4,6 +4,7 @@
 #include <bsp/stm32f4xx_conf.h>
 #include <bsp/stm32f4xx_gpio.h>
 #include <assert.h>
+#include <bits.h>
 
 volatile const char *assert_error_file;
 volatile unsigned int assert_error_line;
@@ -64,15 +65,19 @@ void NMI_Handler(void)
 	assert_failed((uint8_t *)__FILE__, __LINE__);
 }
 
+#pragma GCC push_options
+#pragma GCC optimize ("O0")
+static SCB_Type * scb = SCB;
+void HardFault_Handler(void) __attribute__((naked));
 void HardFault_Handler(void)
 {
+	struct ARMv7M_FPUExceptionFrame * fp;
+	asm volatile ("mov %0, sp"
+	    : "=r" (fp)
+		);
 	assert_failed((uint8_t *)__FILE__, __LINE__);
 }
-
-void MemManage_Handler(void)
-{
-	assert_failed((uint8_t *)__FILE__, __LINE__);
-}
+#pragma GCC pop_options
 
 void BusFault_Handler(void)
 {

@@ -4,6 +4,8 @@
 #include <errno.h>
 #include <string.h>
 
+void MPROT_Setup() {}
+
 _ssize_t _read_r(struct _reent *r, int file, void *ptr, size_t len)
 {
 	return -1;

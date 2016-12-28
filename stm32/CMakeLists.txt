@@ -1,10 +1,11 @@
 project(STM32)
 cmake_minimum_required(VERSION 2.6)
 
-#needs to be set from outside to work
-#set(CMAKE_TOOLCHAIN_FILE  CodeSourcery.cmake)
+#use -DCMAKE_TOOLCHAIN_FILE=/absolute/path/to/toolchain.cmake
+#when first creating the build directory.
+#adjust toolchain.cmake to your system.
 
-set(COMPILE_DEFINITIONS_DEBUG    -O1 -ggdb)
+set(COMPILE_DEFINITIONS_DEBUG    -O1 -ggdb )
 set(COMPILE_DEFINITIONS_RELEASE  -O1)
 
 add_definitions(
@@ -12,7 +13,7 @@ add_definitions(
   -DHSE_VALUE=16000000
   )
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -fno-unwind-tables -fno-common -fno-exceptions -fno-rtti -fdata-sections -ffunction-sections -std=c++11"
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -fno-unwind-tables -fno-common -fno-exceptions -fno-rtti -fdata-sections -ffunction-sections -std=c++14"
   )
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -fno-unwind-tables -fno-common -fno-exceptions -fdata-sections -ffunction-sections"
@@ -42,6 +43,7 @@ endfunction(enable_unity_build)
 
 include_directories(
   include
+  ext/libsigc++-2.10.0
   )
 
 set(TESTER_CSRCS
@@ -60,6 +62,8 @@ set(MAIN_CSRCS
   src/main.cpp
   src/timer.cpp
   src/fpga/fpga_comm.cpp
+  src/fpga/sprite.cpp
+  src/fpga/font.c
   src/block/sdio.c
   src/block/sdcard.cpp
   src/block/msd.cpp
@@ -68,28 +72,51 @@ set(MAIN_CSRCS
   src/sys/syscallscpp.cpp
   src/sys/cppsupport.cpp
   src/sys/assert.c
-  src/fpga/font.c
+  src/sys/mprot.cpp
   src/fdc/fdc.cpp
   src/fdc/dsk.cpp
   src/usb/usb.cpp
   src/usb/usbchannel.cpp
   src/usb/usbdevice.cpp
   src/lang.cpp
+  src/input/usbhid.cpp
+  src/input/input.cpp
+  src/mouse.cpp
+  src/ui/iconbar.cpp
+  src/ui/ui.cpp
+  src/ui/hint.cpp
+  src/ui/menu.cpp
+  src/ui/frame.cpp
+  src/ui/panel.cpp
+  src/ui/controls.cpp
+  src/ui/button.cpp
+  src/ui/input.cpp
+  src/ui/label.cpp
+  src/ui/scrollbar.cpp
+  src/ui/listbox.cpp
+  src/ui/fileselect.cpp
+  src/ui/icons.cpp
   src/bsp/system_stm32f4xx.c
-#  src/bsp/stm32f4xx_crc.c
-#  src/bsp/stm32f4xx_dbgmcu.c
+  #  src/bsp/stm32f4xx_crc.c
+  #  src/bsp/stm32f4xx_dbgmcu.c
   src/bsp/stm32f4xx_dma.c
   src/bsp/stm32f4xx_exti.c
   src/bsp/stm32f4xx_flash.c
   src/bsp/stm32f4xx_gpio.c
   src/bsp/stm32f4xx_rcc.c
-#  src/bsp/stm32f4xx_rng.c
-#  src/bsp/stm32f4xx_rtc.c
+  #  src/bsp/stm32f4xx_rng.c
+  #  src/bsp/stm32f4xx_rtc.c
   src/bsp/stm32f4xx_sdio.c
   src/bsp/stm32f4xx_spi.c
   src/bsp/stm32f4xx_syscfg.c
-#  src/bsp/stm32f4xx_tim.c
+  #  src/bsp/stm32f4xx_tim.c
   src/bsp/misc.c
+  # sigc++
+  ext/libsigc++-2.10.0/sigc++/adaptors/lambda/lambda.cc
+  ext/libsigc++-2.10.0/sigc++/signal_base.cc
+  ext/libsigc++-2.10.0/sigc++/functors/slot_base.cc
+  ext/libsigc++-2.10.0/sigc++/trackable.cc
+  ext/libsigc++-2.10.0/sigc++/connection.cc
   )
 
 #enable_unity_build(ubtester TESTER_CSRCS)
@@ -109,7 +136,7 @@ add_executable(main
 
 set_target_properties(main PROPERTIES
   LINK_DEPENDS "${STM32_SOURCE_DIR}/link.ld"
-  LINK_FLAGS "-T \"${STM32_SOURCE_DIR}/link.ld\" -nostartfiles -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -O2 -Wl,--gc-section")
+  LINK_FLAGS "-T \"${STM32_SOURCE_DIR}/link.ld\" -nostartfiles -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -O2 -Wl,--gc-section -Wl,--wrap=_calloc_r -Wl,--wrap=_free_r -Wl,--wrap=_malloc_r -Wl,--wrap=_memalign_r -Wl,--wrap=_realloc_r -Wl,--wrap=_valloc_r -Wl,--wrap=_pvalloc_r -Wl,--wrap=_malloc_stats_r")
 
 set_target_properties(tester PROPERTIES
   LINK_DEPENDS "${STM32_SOURCE_DIR}/link.ld"

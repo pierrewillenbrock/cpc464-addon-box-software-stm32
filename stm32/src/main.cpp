@@ -9,6 +9,8 @@
 #include <string>
 #include <sstream>
 #include <unordered_map>
+#include <deque>
+#include <malloc.h>
 
 #include <bsp/stm32f4xx_gpio.h>
 #include <bsp/stm32f4xx_rcc.h>
@@ -16,14 +18,20 @@
 #include <bsp/stm32f4xx_exti.h>
 #include <bsp/stm32f4xx_syscfg.h>
 #include <fpga/fpga_comm.h>
+#include <fpga/layout.h>
 #include <timer.h>
 #include <block/sdcard.h>
 #include <fs/fat.h>
 #include <fs/vfs.hpp>
 #include <fpga/font.h>
 #include <fdc/fdc.h>
-#include <fpga/sprite.h>
-#include <usb/usb.h>
+#include <fpga/sprite.hpp>
+#include <usb/usb.hpp>
+#include <input/usbhid.h>
+#include <mouse.h>
+#include <ui/iconbar.h>
+#include <ui/ui.hpp>
+#include <deferredwork.hpp>
 
 #define LEDR_PIN GPIO_Pin_3
 #define LEDG_PIN GPIO_Pin_2
@@ -211,7 +219,10 @@ void SysClk_Setup() {
                      Tile data from the palette area is replaced with constant
                       palette index 0-3.
    0x6f00 - 0x6fff : The highest range is used for palette data, but can be
-                     used for tiles or map data as well. The palette data forms
+                     used for map data as well. If used for tile addresses,
+		     instead of the memory contents there are 4 uniform colored
+		     tiles of the first 4 palette colors.
+		     The palette data forms
                      8 palettes of 16 full color indices(5 bits) and
                      8 palettes of 16 short color indices(4 bits)
                      The palette bytes are used this way:
@@ -334,11 +345,11 @@ static int initROM() {
 		return -1;
 	char buf1[1024];
 	char buf2[1024];
-	uint16_t addr = 0x0000; //base address of the ROM
-	while(addr < 0x4000) {
+	uint32_t addr = FPGA_CPC_ROM; //base address of the ROM
+	while(addr < FPGA_CPC_ROM+0x4000) {
 		size_t n = sizeof(buf1);
-		if (addr + n > 0x4000)
-			n = 0x4000 - addr;
+		if (addr + n > FPGA_CPC_ROM+0x4000)
+			n = FPGA_CPC_ROM+0x4000 - addr;
 		int res = read(fd, buf1, n);
 		if (res < 0) {
 			GPIO_ResetBits(LED_GPIO, LEDB_PIN | LEDG_PIN);
@@ -350,16 +361,16 @@ static int initROM() {
 		FPGAComm_CopyToFPGA(addr, buf1, res);
 		addr += res;
 	}
-	if (addr < 0x4000) {
+	if (addr < FPGA_CPC_ROM+0x4000) {
 		close(fd);
 		return -1;
 	}
 	lseek(fd, 0, SEEK_SET);
-	addr = 0x0000; //base address of the ROM
-	while(addr < 0x4000) {
+	addr = FPGA_CPC_ROM; //base address of the ROM
+	while(addr < FPGA_CPC_ROM+0x4000) {
 		size_t n = sizeof(buf1);
-		if (addr + n > 0x4000)
-			n = 0x4000 - addr;
+		if (addr + n > FPGA_CPC_ROM+0x4000)
+			n = FPGA_CPC_ROM+0x4000 - addr;
 		int res = read(fd, buf1, n);
 		if (res < 0) {
 			GPIO_ResetBits(LED_GPIO, LEDB_PIN | LEDG_PIN);
@@ -383,10 +394,10 @@ struct {
 } CPCLog;
 void captureCPCLog() {
 	uint8_t b = 0x00;
-	FPGAComm_CopyToFPGA(0x5000, &b, 1);
-	FPGAComm_CopyFromFPGA(&CPCLog, 0x5000, sizeof(CPCLog));
+	FPGAComm_CopyToFPGA(FPGA_DBG_BASE, &b, 1);
+	FPGAComm_CopyFromFPGA(&CPCLog, FPGA_DBG_BASE, sizeof(CPCLog));
 	b = 0x80;
-	FPGAComm_CopyToFPGA(0x5000, &b, 1);
+	FPGAComm_CopyToFPGA(FPGA_DBG_BASE, &b, 1);
 }
 
 static FPGAComm_Command cpcResetFPGACommand;
@@ -400,7 +411,7 @@ static void cpcResetCompletion(int result, struct FPGAComm_Command *unused) {
 }
 static void cpcResetTimer(void *unused) {
 	cpcResetState = 0x7;
-	cpcResetFPGACommand.address = 0x4c00;
+	cpcResetFPGACommand.address = FPGA_CPC_CTL;
 	cpcResetFPGACommand.length = 1;
 	cpcResetFPGACommand.read_data = NULL;
 	cpcResetFPGACommand.write_data = &cpcResetState;
@@ -408,8 +419,11 @@ static void cpcResetTimer(void *unused) {
 	FPGAComm_ReadWriteCommand(&cpcResetFPGACommand);
 }
 
+static std::deque<sigc::slot<void> > deferred_work;
+
 int main()
 {
+	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);
 	LED_Setup();
 	SysClk_Setup();
 	//__WFI() is guaranteed to return after this point.(Whenever SYSTICK
@@ -425,14 +439,21 @@ int main()
 	VFS_Setup();
 
 	FPGAComm_Setup();
+	Sprite_Setup();
+
+	Mouse_Setup();
+
+	IconBar_Setup();
+
 	FAT_Setup();
 	SDcard_Setup();
 
+	USBHID_Setup();
 	USB_Setup();
 
 	while(1) {
 		char name[6] = {0xff, 0}; //name and revision
-		FPGAComm_CopyFromFPGA((void*)&name, 0x7ff0, 6);
+		FPGAComm_CopyFromFPGA((void*)&name, FPGA_INT_ID, 6);
 		if (memcmp(name,"CPCA",4) == 0 && name[4] == 1 && name[5] == 1)
 			break;
 	}
@@ -440,85 +461,74 @@ int main()
 	uint8_t b;
 	uint16_t w;
 	b = 0x09; //issue bus reset, keep everything disabled and f!exp high
-	FPGAComm_CopyToFPGA(0x4c00, (void*)&b, 1);
+	FPGAComm_CopyToFPGA(FPGA_CPC_CTL, (void*)&b, 1);
 
 	//center the image horizontally, vertical is already good.
 	w = 9;
-	FPGAComm_CopyToFPGA(0x7044, (void*)&w, 2);
+	FPGAComm_CopyToFPGA(FPGA_GRPH_HSYNC_STRT, (void*)&w, 2);
 	w = 60;
-	FPGAComm_CopyToFPGA(0x7046, (void*)&w, 2);
-
+	FPGAComm_CopyToFPGA(FPGA_GRPH_HSYNC_END, (void*)&w, 2);
 
 	usleep(10000);
 	b = 0x08; //release bus reset, keep everything disabled and f!exp high
-	FPGAComm_CopyToFPGA(0x4c00, (void*)&b, 1);
+	FPGAComm_CopyToFPGA(FPGA_CPC_CTL, (void*)&b, 1);
 
 	GPIO_ResetBits(LED_GPIO, LEDR_PIN | LEDG_PIN);
 	GPIO_SetBits(LED_GPIO, LEDB_PIN);
 
-	font_upload(0x480);
+	font_upload();
 
-	//setup a simple palette
-	static uint16_t const palette[] = {
-		//palette #0
-		0x000, 0x002, 0x003, 0x004, 0x008, 0x001, 0x009, 0x00a,
-		0x006, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000,
-		//palette #1
-		0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000,
-		0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000,
-		//palette #2
-		0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000,
-		0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000,
-		//palette #3
-		0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000,
-		0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000,
-		//palette #4
-		0x140, 0x0c0, 0x140, 0x0c0, 0x140, 0x0c0, 0x140, 0x0c0,
-		0x000, 0x0c0, 0x140, 0x0c0, 0x140, 0x0c0, 0x140, 0x0c0,
-		//palette #5
-		0x140, 0x140, 0x0c0, 0x0c0, 0x140, 0x140, 0x0c0, 0x0c0,
-		0x140, 0x140, 0x0c0, 0x0c0, 0x140, 0x140, 0x0c0, 0x0c0,
-		//palette #6
-		0x140, 0x140, 0x140, 0x140, 0x0c0, 0x0c0, 0x0c0, 0x0c0,
-		0x140, 0x140, 0x140, 0x140, 0x0c0, 0x0c0, 0x0c0, 0x0c0,
-		//palette #7
-		0x140, 0x140, 0x140, 0x140, 0x140, 0x140, 0x140, 0x140,
-		0x0c0, 0x0c0, 0x0c0, 0x0c0, 0x0c0, 0x0c0, 0x0c0, 0x0c0,
-	};
-	FPGAComm_CopyToFPGA(0x6f00, palette, sizeof(palette));
+	{
+	  uint8_t font_palette11[16] = {6, 10,0,0,//dark blue on yellow
+					8, 1, 0,0,//black on white
+					1, 8, 0,0,//white on black
+	  };
+	  uint8_t font_palette15[16] = {10, 6,0,0,//yellow on dark blue
+					1, 8, 0,0,//white on black
+					8, 1, 0,0,//black on white
+	  };
+	  sprite_set_palette(11, font_palette11);
+	  sprite_set_palette(15, font_palette15);
+	  sprite_upload_palette();
+	}
 
 	enum {
 		Initial,
 		RomLoaded
 	} state = Initial;
 
-	uint16_t logo_map[] = {
-		font_get_tile('C', 4),
-		font_get_tile('P', 4),
-		font_get_tile('C', 4),
-		font_get_tile(' ', 4),
-		font_get_tile('A', 4),
-		font_get_tile('d', 4),
-		font_get_tile('d', 4),
-		font_get_tile('o', 4),
-		font_get_tile('n', 4),
-		font_get_tile('-', 4),
-		font_get_tile('B', 4),
-		font_get_tile('o', 4),
-		font_get_tile('x', 4),
+	uint32_t logo_map[] = {
+		font_get_tile('C', 15, 0),
+		font_get_tile('P', 15, 0),
+		font_get_tile('C', 15, 0),
+		font_get_tile(' ', 15, 0),
+		font_get_tile('A', 15, 0),
+		font_get_tile('d', 15, 0),
+		font_get_tile('d', 15, 0),
+		font_get_tile('o', 15, 0),
+		font_get_tile('n', 15, 0),
+		font_get_tile('-', 15, 0),
+		font_get_tile('B', 15, 0),
+		font_get_tile('o', 15, 0),
+		font_get_tile('x', 15, 0),
 	};
-	FPGAComm_CopyToFPGA(0x6000 + 0x30*2, logo_map, sizeof(logo_map));
-
-	sprite_info logo_sprite = {
-		.hpos = 180,
-		.vpos = 80,
-		.map_addr = 0x30,
+	uint16_t logo_map_base = sprite_alloc_vmem(13,1,~0U);
+	FPGAComm_CopyToFPGA(FPGA_GRPH_SPRITES_RAM +
+			    logo_map_base*4, logo_map, sizeof(logo_map));
+	Sprite logo_sprite;
+	sprite_info logo_sprite_info = {
+		.hpos = (uint16_t)(ui::screenRect().x+50),
+		.vpos = (uint16_t)(ui::screenRect().y+30),
+		.map_addr = logo_map_base,
 		.hsize = 13,
 		.vsize = 1,
 		.hpitch = 13,
-		.doublesize = 1
+		.doublesize = 1,
 	};
-	FPGAComm_CopyToFPGA(0x7010, &logo_sprite, sizeof(logo_sprite));
+	logo_sprite.setSpriteInfo(logo_sprite_info);
+	logo_sprite.setPriority(0);
+	logo_sprite.setZOrder(0);
+	logo_sprite.setVisible(true);
 
 	captureCPCLog(); //do it once so the function is not optimized out
 	while(1) {
@@ -530,13 +540,13 @@ int main()
 				state = RomLoaded;
 				uint8_t b;
 				b = 0x09; //issue bus reset, keep everything disabled and f!exp high
-				FPGAComm_CopyToFPGA(0x4c00, (void*)&b, 1);
+				FPGAComm_CopyToFPGA(FPGA_CPC_CTL, (void*)&b, 1);
 				usleep(10000);
 				/* in theory, this is all. but in practice, something is amiss.*/
 				b = 0x06; //release bus reset, enable f!exp, rom and fdc
 				//b = 0x04; //release bus reset, enable f!exp and enable fdc
 
-				FPGAComm_CopyToFPGA(0x4c00, (void*)&b, 1);
+				FPGAComm_CopyToFPGA(FPGA_CPC_CTL, (void*)&b, 1);
 				GPIO_ResetBits(LED_GPIO, LEDR_PIN | LEDB_PIN);
 				GPIO_SetBits(LED_GPIO, LEDG_PIN);
 
@@ -546,6 +556,7 @@ int main()
 				if (!path.empty()) {
 					FDC_InsertDisk(0,path.c_str());
 				}
+				malloc_stats();
 
 			}
 			break;
@@ -553,9 +564,24 @@ int main()
 			__WFI();
 			break;
 		}
+		uint32_t irq_level;
+		ISR_Disable(irq_level);
+		while(!deferred_work.empty()) {
+			sigc::slot<void> work = deferred_work.front();
+			deferred_work.pop_front();
+			ISR_Enable(irq_level);
+			work();
+			ISR_Disable(irq_level);
+		}
+		ISR_Enable(irq_level);
 	}
 
 	return 0;
+}
+
+void addDeferredWork(sigc::slot<void> const &work) {
+	ISR_Guard g;
+	deferred_work.push_back(work);
 }
 
 static std::unordered_map<RefPtr<Inode>, std::string> filesystems;
@@ -585,4 +611,15 @@ void VFS_UnregisterFilesystem(RefPtr<Inode> ino) {
 	filesystems.erase(ino);
 }
 
+void FDC_MotorOn() {
+	IconBar_disk_motor_on();
+}
+
+void FDC_MotorOff() {
+	IconBar_disk_motor_off();
+}
+
+void FDC_Activity(int drive, int activity) {
+	IconBar_disk_activity(drive, activity);
+}
 

@@ -5,7 +5,7 @@
 
 static inline uint32_t interrupt_disable() {
 	uint32_t level = __get_BASEPRI();
-	__set_BASEPRI(0x80);
+	__set_BASEPRI(0x40);
 	return level;
 }
 

@@ -2,7 +2,7 @@
 #include <fdc/fdc.h>
 
 #include <fpga/fpga_comm.h>
-#include <fpga/sprite.h>
+#include <fpga/layout.h>
 #include <timer.h>
 #include <fdc/dsk.hpp>
 
@@ -52,58 +52,47 @@ static struct FDDInfoBlock {
 	uint8_t driveNCN[4];
 } fddInfoBlock;
 static FPGAComm_Command driveStatusFPGACommand;
-static uint16_t driveStatus_spriteMap[] = {
-	// high 6 bits of address, tile is at 0x6000+0x800
-	0x20, 0x22,
-	0x21, 0x23,
-};
 static int driveStatusState = 0;
+static uint8_t driveLastMotorState = 0;
+static uint8_t driveLastAccessState = 0;
+static uint8_t driveAccessCount[4] = {0,0,0,0};
 
 static RefPtr<Disk> images[4];
 
 static void driveStatusCompletion(int result, struct FPGAComm_Command *unused) {
+	driveStatusState = 0;
 	if (result != 0) {
-		driveStatusState = 0;
 		return;
 	}
-	switch(driveStatusState) {
-	case 1:
-		if (fddInfoBlock.motorOn & 1) {
-			driveStatus_spriteMap[0] = 0x20;
-			driveStatus_spriteMap[1] = 0x22;
-			driveStatus_spriteMap[2] = 0x21;
-			driveStatus_spriteMap[3] = 0x23;
-			if (fddInfoBlock.command.valid) {
-				driveStatus_spriteMap[3] = 0x24 + fddInfoBlock.command.driveUnit;
-			}
-		} else {
-			driveStatus_spriteMap[0] = 0x3c;
-			driveStatus_spriteMap[1] = 0x3c;
-			driveStatus_spriteMap[2] = 0x3c;
-			driveStatus_spriteMap[3] = 0x3c;
-		}
-		driveStatusFPGACommand.address = 0x6000;
-		driveStatusFPGACommand.length = sizeof(driveStatus_spriteMap);
-		driveStatusFPGACommand.read_data = NULL;
-		driveStatusFPGACommand.write_data = &driveStatus_spriteMap;
-		driveStatusFPGACommand.completion = driveStatusCompletion;
-		driveStatusState = 2;
-		FPGAComm_ReadWriteCommand(&driveStatusFPGACommand);
-		for(unsigned drive = 0; drive < 4; drive++) {
-			if (images[drive])
-				images[drive]->preloadCylinder
-					(fddInfoBlock.driveNCN[drive]);
-		}
-		break;
-	case 2:
-		driveStatusState = 0;
-		break;
+	if ((fddInfoBlock.motorOn & 1) && !driveLastMotorState) {
+		driveLastMotorState = 1;
+		FDC_MotorOn();
+	}
+	if (!(fddInfoBlock.motorOn & 1) && driveLastMotorState) {
+		driveLastMotorState = 0;
+		FDC_MotorOff();
 	}
 }
+
 static void driveStatusTimer(void *unused) {
+	for(unsigned i = 0; i < 4; i++) {
+		if (driveAccessCount[i] > 0) {
+			driveAccessCount[i]--;
+			if (!(driveLastAccessState & (1 << i))) {
+				driveLastAccessState |= 1 << i;
+				FDC_Activity(i, 1);
+			}
+		} else {
+			if ((driveLastAccessState & (1 << i))) {
+				driveLastAccessState &= ~(1 << i);
+				FDC_Activity(i, 0);
+			}
+		}
+	}
+
 	if (driveStatusState != 0)
 		return;
-	driveStatusFPGACommand.address = 0x4800;
+	driveStatusFPGACommand.address = FPGA_CPC_FDC_INFOBLK;
 	driveStatusFPGACommand.length = sizeof(fddInfoBlock);
 	driveStatusFPGACommand.read_data = &fddInfoBlock;
 	driveStatusFPGACommand.write_data = NULL;
@@ -149,6 +138,7 @@ static void fdcirq_FPGACommCompletion(int result,
 */
 static void fdcirq_DiskFindSectorCompletion(RefPtr<DiskSector> sector,
 					   DiskFindSectorCommand *command) {
+	driveAccessCount[fdcirq_command.driveUnit] = 10;
 	switch (fdcirq_state) {
 	case SECTOR_FETCH:
 		switch (fdcirq_command.command) {
@@ -171,7 +161,7 @@ static void fdcirq_DiskFindSectorCompletion(RefPtr<DiskSector> sector,
 				sectorbuf[1] = sector->H;
 				sectorbuf[2] = sector->R;
 				sectorbuf[3] = sector->N;
-				fdcirq_FPGACommand2.address = 0x4000;
+				fdcirq_FPGACommand2.address = FPGA_CPC_FDC_DATA;
 				fdcirq_FPGACommand2.length = 4;
 				fdcirq_FPGACommand2.read_data = NULL;
 				fdcirq_FPGACommand2.write_data = &sectorbuf;
@@ -188,7 +178,7 @@ static void fdcirq_DiskFindSectorCompletion(RefPtr<DiskSector> sector,
 				fdcirq_response.dataError = (sector->ST1 & 0x20)?1:0;
 				fdcirq_response.valid = 1;
 			}
-			fdcirq_FPGACommand.address = 0x480a;
+			fdcirq_FPGACommand.address = FPGA_CPC_FDC_INSTS;
 			fdcirq_FPGACommand.length = 1;
 			fdcirq_FPGACommand.read_data = NULL;
 			fdcirq_FPGACommand.write_data = &fdcirq_response;
@@ -211,10 +201,10 @@ static void fdcirq_DiskFindSectorCompletion(RefPtr<DiskSector> sector,
 				fdcirq_response.dataError = 0;
 				fdcirq_response.valid = 1;
 			} else {
-				//todo: need to copy data to sectorbuf
+				//copy data to sectorbuf
 				memcpy(sectorbuf, sector->data, sector->size);
 
-				fdcirq_FPGACommand2.address = 0x4000;
+				fdcirq_FPGACommand2.address = FPGA_CPC_FDC_DATA;
 				fdcirq_FPGACommand2.length = sector->size;
 				fdcirq_FPGACommand2.read_data = NULL;
 				fdcirq_FPGACommand2.write_data = &sectorbuf;
@@ -231,7 +221,7 @@ static void fdcirq_DiskFindSectorCompletion(RefPtr<DiskSector> sector,
 				fdcirq_response.dataError = (sector->ST1 & 0x20)?1:0;
 				fdcirq_response.valid = 1;
 			}
-			fdcirq_FPGACommand.address = 0x480a;
+			fdcirq_FPGACommand.address = FPGA_CPC_FDC_INSTS;
 			fdcirq_FPGACommand.length = 1;
 			fdcirq_FPGACommand.read_data = NULL;
 			fdcirq_FPGACommand.write_data = &fdcirq_response;
@@ -260,6 +250,7 @@ static void fdcirq_FPGACommCompletion(int result,
 		FPGAComm_ReadWriteCommand(&fdcirq_FPGACommand);
 		return;
 	}
+	driveAccessCount[fdcirq_command.driveUnit] = 10;
 	switch (fdcirq_state) {
 	case COMMAND_FETCH: //we just fetched our fdcirq_command.
 		if(!fdcirq_command.valid) {
@@ -284,7 +275,7 @@ static void fdcirq_FPGACommCompletion(int result,
 			fdcirq_response.noData = 0;
 			fdcirq_response.dataError = 0;
 			fdcirq_response.valid = 1;
-			fdcirq_FPGACommand.address = 0x480a;
+			fdcirq_FPGACommand.address = FPGA_CPC_FDC_INSTS;
 			fdcirq_FPGACommand.length = 1;
 			fdcirq_FPGACommand.read_data = NULL;
 			fdcirq_FPGACommand.write_data = &fdcirq_response;
@@ -355,7 +346,7 @@ static void fdcirq_FPGACommCompletion(int result,
 		assert(!fdcirq_command_final.valid);
 		if (!fdcirq_dskimage && fdcirq_command.command != 2) {
 			fdcirq_response.valid = 0;
-			fdcirq_FPGACommand.address = 0x480a;
+			fdcirq_FPGACommand.address = FPGA_CPC_FDC_INSTS;
 			fdcirq_FPGACommand.length = 1;
 			fdcirq_FPGACommand.read_data = NULL;
 			fdcirq_FPGACommand.write_data = &fdcirq_response;
@@ -372,7 +363,7 @@ static void fdcirq_FPGACommCompletion(int result,
 			case 1: //read id
 			case 3: //read data
 				fdcirq_response.valid = 0;
-				fdcirq_FPGACommand.address = 0x480a;
+				fdcirq_FPGACommand.address = FPGA_CPC_FDC_INSTS;
 				fdcirq_FPGACommand.length = 1;
 				fdcirq_FPGACommand.read_data = NULL;
 				fdcirq_FPGACommand.write_data = &fdcirq_response;
@@ -401,7 +392,7 @@ static void FDC_IRQHandler(void *unused) {
 		fdcirq_endisable_FPGACommand.completion = NULL;
 		FPGAComm_DisableIRQs_nb(0x01, &fdcirq_endisable_FPGACommand);
 		//need to fetch the command
-		fdcirq_FPGACommand.address = 0x4800;
+		fdcirq_FPGACommand.address = FPGA_CPC_FDC_INFOBLK;
 		fdcirq_FPGACommand.length = sizeof(fdcirq_command);
 		fdcirq_FPGACommand.read_data = &fdcirq_command;
 		fdcirq_FPGACommand.write_data = NULL;
@@ -414,7 +405,7 @@ static void FDC_IRQHandler(void *unused) {
 		fdcirq_endisable_FPGACommand.completion = NULL;
 		FPGAComm_DisableIRQs_nb(0x01, &fdcirq_endisable_FPGACommand);
 		//need to fetch the command. contains final register states.
-		fdcirq_FPGACommand.address = 0x4800;
+		fdcirq_FPGACommand.address = FPGA_CPC_FDC_INFOBLK;
 		fdcirq_FPGACommand.length = sizeof(fdcirq_command);
 		fdcirq_FPGACommand.read_data = &fdcirq_command_final;
 		fdcirq_FPGACommand.write_data = NULL;
@@ -429,103 +420,6 @@ static void FDC_IRQHandler(void *unused) {
 }
 
 void FDC_Setup() {
-	//put some tile data in graphics ram
-#define TILE_LINE(c1, c2, c3, c4, c5, c6, c7, c8, p12, p34, p56, p78)	\
-	((p12) << 8) |  ((c2) << 4) | (c1),				\
-		((p34) << 8) |  ((c4) << 4) | (c3),			\
-		((p56) << 8) |  ((c6) << 4) | (c5),			\
-		((p78) << 8) |  ((c8) << 4) | (c7)
-	uint16_t tiles[] = {
-		//left top corner
-		TILE_LINE( 5, 5, 5, 5, 5, 5, 5, 5,0,0,0,0),
-		TILE_LINE( 5, 4, 4, 4, 4, 4, 4, 4,0,0,0,0),
-		TILE_LINE( 5, 4, 7, 7, 7, 4, 7, 7,0,0,0,0),
-		TILE_LINE( 5, 4, 6, 6, 6, 6, 6, 6,0,0,0,0),
-		TILE_LINE( 5, 4, 4, 4, 4, 4, 4, 4,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 5, 5, 5,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 5, 5, 5,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 5, 4, 5,0,0,0,0),
-		//left bottom corner
-		TILE_LINE( 5, 5, 5, 5, 5, 4, 4, 4,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 5, 4, 5,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 5, 5, 5,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 5, 6, 5,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 6, 6, 6,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 6, 6, 6,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 5, 6, 5,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 5, 5, 5,0,0,0,0),
-		//right top corner
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 4, 4, 4, 4, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 7, 7, 4, 4, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 6, 6, 6, 4, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 4, 4, 4, 4, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		//right bottom corner
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		//right bottom corner A
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 8, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 8, 0, 8, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 8, 8, 8, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 8, 0, 8, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 8, 0, 8, 0,0,0,0,0),
-		//right bottom corner B
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 8, 8, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 8, 0, 8, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 8, 8, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 8, 0, 8, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 8, 8, 0, 0,0,0,0,0),
-		//right bottom corner C
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 8, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 8, 0, 8, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 8, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 8, 0, 8, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 8, 0, 0,0,0,0,0),
-		//right bottom corner D
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 5, 0, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 8, 8, 0, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 8, 0, 8, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 8, 0, 8, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 8, 0, 8, 0,0,0,0,0),
-		TILE_LINE( 5, 5, 5, 5, 8, 8, 0, 0,0,0,0,0),
-		};
-	FPGAComm_CopyToFPGA(0x6000 + 0x20*0x40, tiles, sizeof(tiles));
-
-	//put some map data in graphics ram
-	FPGAComm_CopyToFPGA(0x6000, driveStatus_spriteMap, sizeof(driveStatus_spriteMap));
-
-	sprite_info disc_sprite = {
-		.hpos = 180,
-		.vpos = 64,
-		.map_addr = 0,
-		.hsize = 2,
-		.vsize = 2,
-		.hpitch = 2,
-		.doublesize = 0
-	};
-	FPGAComm_CopyToFPGA(0x7000, &disc_sprite, sizeof(disc_sprite));
-
-
 	Timer_Repeating(40000, driveStatusTimer, NULL);
 	FPGAComm_SetIRQHandler(0, FDC_IRQHandler, NULL);
 	FPGAComm_EnableIRQs(0x01);
@@ -541,14 +435,14 @@ void FDC_InsertDisk(int drive, char const *filename) {
 		b = 0xc0;
 	else
 		b = 0x80;
-	FPGAComm_CopyToFPGA(0x4810 + drive, (void*)&b, 1);
+	FPGAComm_CopyToFPGA(FPGA_CPC_FDC_FDD_STS(drive), (void*)&b, 1);
 }
 
 void FDC_EjectDisk(int drive) {
 	assert(drive >= 0 && drive < 4);
 	uint8_t b;
 	b = 0x00;
-	FPGAComm_CopyToFPGA(0x4810 + drive, (void*)&b, 1);
+	FPGAComm_CopyToFPGA(FPGA_CPC_FDC_FDD_STS(drive), (void*)&b, 1);
 	if (images[drive])
 		images[drive]->close();
 	images[drive] = NULL;

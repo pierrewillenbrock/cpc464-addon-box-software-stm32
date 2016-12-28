@@ -17,15 +17,17 @@ extern "C" {
  */
 
 extern uint16_t font_tile_base;
-static inline uint16_t font_get_tile(char c, uint8_t pal_base) {
+static inline uint32_t font_get_tile(char c, uint8_t pal_sel, uint8_t pal_idx) {
   if (c < 0x20 || c >= 0x80) {
     c = 0x7f;
   }
-  return (((c & 0x3) << 6) | ((c & 0x7c) >> 2)) + (pal_base << 6) + font_tile_base;
+  uint16_t tile = c;
+  tile += font_tile_base * 4;
+  return (pal_idx << 21) | (pal_sel << 17) | 0x10000 |
+    tile;
 }
-//output buffer is 0x60/4*4*8=0x300 elements
-void font_compile(uint16_t *buffer);
-uint16_t font_upload(uint16_t position_after);
+
+uint16_t font_upload();
 
 #ifdef __cplusplus
 }

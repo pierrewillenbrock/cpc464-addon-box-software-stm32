@@ -156,6 +156,8 @@ static void SetSysClock(void);
 extern void (*__init_array_start)();
 extern void (*__init_array_end)();
 
+void MPROT_Setup();
+
 /**
   * @brief  Setup the microcontroller system
   *         Initialize the Embedded Flash Interface, the PLL and update the 
@@ -167,7 +169,9 @@ void SystemInit(void)
 {
   /* FPU settings ------------------------------------------------------------*/
   #if (__FPU_PRESENT == 1) && (__FPU_USED == 1)
+  //FPCCR default is: ASPEN, LSPEN.
     SCB->CPACR |= ((3UL << 10*2)|(3UL << 11*2));  /* set CP10 and CP11 Full Access */
+    __set_CONTROL(0x4);//push fpu registers on stack
   #endif
   /* Reset the RCC clock configuration to the default reset state ------------*/
   /* Set HSION bit */
@@ -199,6 +203,7 @@ void SystemInit(void)
   SCB->VTOR = FLASH_BASE | VECT_TAB_OFFSET; /* Vector Table Relocation in Internal FLASH */
 #endif
 
+  MPROT_Setup();
 
   /* run init code */
   void (**init_proc)();

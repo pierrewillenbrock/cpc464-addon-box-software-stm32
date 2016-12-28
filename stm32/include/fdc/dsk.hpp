@@ -22,7 +22,7 @@ struct DiskFindSectorCommand {
 			    DiskFindSectorCommand *command);
 };
 
-class DiskSector : public Refcounted {
+class DiskSector : public Refcounted<DiskSector> {
 public:
 	unsigned C;
 	unsigned H;
@@ -37,7 +37,7 @@ public:
 	virtual ~DiskSector() {}
 };
 
-class Disk : public Refcounted {
+class Disk : public Refcounted<Disk> {
 protected:
 	int fd;
 	unsigned char NumTracks;
