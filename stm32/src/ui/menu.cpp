@@ -30,10 +30,10 @@ void Menu::setPosition(Point p) {
   m_spriteinfo.hpos = m_position.x;
   m_spriteinfo.vpos = m_position.y;
   if (m_spriteinfo.hpos + m_spriteinfo.hsize*8 >
-      screenRect().x+screenRect().width)
+      screen.rect().x+screen.rect().width)
     m_spriteinfo.hpos = p.x-m_spriteinfo.hsize*8;
   if (m_spriteinfo.vpos + m_spriteinfo.vsize*8 >
-      screenRect().y+screenRect().height)
+      screen.rect().y+screen.rect().height)
     m_spriteinfo.vpos = p.y-m_spriteinfo.vsize*8;
   m_sprite.setSpriteInfo(m_spriteinfo);
 }
@@ -63,10 +63,10 @@ void Menu::generateMap() {
   m_spriteinfo.hpos = m_position.x;
   m_spriteinfo.vpos = m_position.y;
   if (m_spriteinfo.hpos + m_spriteinfo.hsize*8 >
-      screenRect().x+screenRect().width)
+      screen.rect().x+screen.rect().width)
     m_spriteinfo.hpos = m_position.x-m_spriteinfo.hsize*8;
   if (m_spriteinfo.vpos + m_spriteinfo.vsize*8 >
-      screenRect().y+screenRect().height)
+      screen.rect().y+screen.rect().height)
     m_spriteinfo.vpos = m_position.y-m_spriteinfo.vsize*8;
   if (m_spriteinfo.map_addr != 65535) {
     map_uploader.setSrc(map.data());
@@ -124,7 +124,7 @@ void Menu::mouseUp(uint8_t button, MouseState mousestate) {
   }
 }
 
-void Menu::mouseMove(int16_t dx, int16_t dy, MouseState mousestate) {
+void Menu::mouseMove(int16_t /*dx*/, int16_t /*dy*/, MouseState mousestate) {
   ui::Rect r = getRect();
   if (mousestate.x < r.x ||
       mousestate.y < r.y ||

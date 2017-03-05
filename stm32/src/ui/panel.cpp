@@ -36,4 +36,33 @@ void Panel::redraw() {
   }
 }
 
+void Panel::unmapped() {
+  SubControl::unmapped();
+  if (m_visible) {
+    for(auto &ch : m_children)
+      ch->unmapped();
+  }
+}
 
+void Panel::mapped() {
+  SubControl::mapped();
+  if (m_visible) {
+    for(auto &ch : m_children)
+      ch->mapped();
+  }
+}
+
+void Panel::setVisible(bool visible) {
+  if (m_visible == visible)
+    return;
+  SubControl::setVisible(visible);
+  if (m_parent->isMapped()) {
+    if (visible) {
+      for(auto &ch : m_children)
+	ch->mapped();
+    } else {
+      for(auto &ch : m_children)
+	ch->unmapped();
+    }
+  }
+}

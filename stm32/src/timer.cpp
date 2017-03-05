@@ -35,16 +35,16 @@ uint64_t Timer_timeSincePowerOn() {
 
 	//ISR blocked, but wraparound before A3
 	if (icsr1)
-		return ctr2 + 1000 + v2/168;
+		return ctr2 + 1000 + (167999-v2)/168;
 	//ISR blocked, but wraparound after A3
 	//ISR runs between A4 and A5
-	else if (ctr1 == ctr2 && v1 > v2)
-		return ctr1 + v1/168;
+	else if (ctr1 == ctr2 && v1 < v2) //v1 and v2 are downcounters
+		return ctr1 + (167999-v1)/168;
 	//ISR does not run, no wraparound
 	//ISR runs between A1 and A4
 	//ISR runs between A5 and A6
 	else
-		return ctr2 + v2/168;
+		return ctr2 + (167999-v2)/168;
 }
 
 uint32_t Timer_Oneshot(uint32_t usec, void (*func)(void* data), void* data) {

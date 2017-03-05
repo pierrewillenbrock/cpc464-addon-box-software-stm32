@@ -28,9 +28,9 @@ struct InputReport {
 
 class InputListener {
 public:
-	virtual void inputReport(InputReport const &rep) {}
-	virtual void inputDeviceAdd(InputDev *dev) {}
-	virtual void inputDeviceRemove(InputDev *dev) {}
+	virtual void inputReport(InputReport const &/*rep*/) {}
+	virtual void inputDeviceAdd(InputDev */*dev*/) {}
+	virtual void inputDeviceRemove(InputDev */*dev*/) {}
 };
 
 void Input_deviceAdd(InputDev *dev);

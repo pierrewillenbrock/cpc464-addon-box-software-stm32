@@ -240,7 +240,7 @@ void ScrollBar::mouseUp(uint8_t button, MouseState mousestate) {
   }
 }
 
-void ScrollBar::mouseMove(int16_t dx, int16_t dy, MouseState mousestate) {
+void ScrollBar::mouseMove(int16_t /*dx*/, int16_t /*dy*/, MouseState mousestate) {
   if (mousestate.buttons != 1)
     return;
   ui::Rect r = getGlobalRect();

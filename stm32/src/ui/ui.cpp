@@ -105,13 +105,33 @@ namespace ui {
 
 using namespace ui;
 
-Rect const &ui::screenRect() {
-  static Rect r;
-  r.x = 130;
-  r.y = 50;
-  r.width = 788;
-  r.height = 570;
-  return r;
+Screen ui::screen;
+
+Screen::Screen() {
+  m_options.vsync_start = 0;
+  m_options.vsync_end = 4;
+  m_options.vblank_start = -2;
+  m_options.vblank_end = 25;
+  m_options.hsync_start = -20;
+  m_options.hsync_end = 40;
+  m_options.hblank_start = -90;
+  m_options.hblank_end = 145;
+  //this calculation is mirrored in the graphics checker
+  unsigned w = 1023+1;
+  unsigned h = 312;
+  m_rect.x = m_options.hblank_end - 15;
+  m_rect.y = m_options.vblank_end * 2;
+  m_rect.width = w + m_options.hblank_start - m_options.hblank_end;
+  m_rect.height = (h + m_options.vblank_start - m_options.vblank_end) * 2;
+}
+
+void Screen::setRect(Rect const &rect) {
+  m_rect = rect;
+  m_onRectChange(m_rect);
+}
+
+void Screen::setOptions(Options const &options) {
+  m_options = options;
 }
 
 void UI_mouseMove(uint16_t x, uint16_t y, int16_t dx, int16_t dy) {

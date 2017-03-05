@@ -257,7 +257,7 @@ struct FatInode : public Inode {
 			this->mode = mode;
 		}
 	virtual _ssize_t pread(void *ptr, size_t len, off_t offset);
-	virtual _ssize_t pwrite(const void *ptr, size_t len, off_t offset);
+	virtual _ssize_t pwrite(const void */*ptr*/, size_t /*len*/, off_t /*offset*/);
 	void pread_nb_cmpl1(FatInodeReadNb *p);
 	static void _pread_nb_cmpl1(uint32_t cluster,
 				    Fat_FindNextCluster_Command *command);
@@ -545,7 +545,7 @@ _ssize_t FatInode::pread(void *ptr, size_t len, off_t offset) {
 
 	return res;
 }
-_ssize_t FatInode::pwrite(const void *ptr, size_t len, off_t offset) {
+_ssize_t FatInode::pwrite(const void */*ptr*/, size_t /*len*/, off_t /*offset*/) {
 	errno = EINVAL;
 	return -1;
 }

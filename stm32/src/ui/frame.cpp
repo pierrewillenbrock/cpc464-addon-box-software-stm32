@@ -88,6 +88,8 @@ void Frame::setVisible(bool visible) {
     return;
   m_visible = visible;
   if (!visible) {
+    for(auto &ch : m_children)
+      ch->unmapped();
     if (m_spriteinfo.map_addr != 65535) {
       sprite_free_vmem(m_spriteinfo.map_addr);
       m_spriteinfo.map_addr = 65535;
@@ -98,6 +100,8 @@ void Frame::setVisible(bool visible) {
     unsigned addr = sprite_alloc_vmem(m_map.size(), 1, ~0U);
     if (addr != ~0U) {
       m_spriteinfo.map_addr = addr;
+      for(auto &ch : m_children)
+	ch->mapped();
       fullRedraw();
       m_sprite.setSpriteInfo(m_spriteinfo);
     } else {

@@ -22,7 +22,7 @@ struct URB {
 	void *buffer;   //for all transactions
 	size_t buffer_len;
 	size_t buffer_received;
-	enum { Ack, Nak, Stall, Nyet } result; //for Bulk, Control and IRQ transactions
+	enum { Ack, Nak, Stall, Nyet, TXErr, DTErr } result; //for Bulk, Control and IRQ transactions
 	void *userpriv;
 	void (*completion)(int result, URB *u);
 };
@@ -37,7 +37,8 @@ public:
 class USBDriverDevice {
 public:
 	//called once the interface is ready for use
-	virtual void interfaceClaimed(uint8_t interfaceNumber, uint8_t alternateSetting) = 0;
+	virtual void interfaceClaimed(uint8_t interfaceNumber, uint8_t alternateSetting) {};
+	virtual void deviceClaimed() {};
 	//called only for the driver that claimed it. the driver is supposed to
 	//drop all references to the usbdevice.
 	virtual void disconnected(RefPtr<USBDevice> device) = 0;

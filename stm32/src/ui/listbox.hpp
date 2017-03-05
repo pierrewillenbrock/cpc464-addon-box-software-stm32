@@ -20,7 +20,7 @@ namespace ui {
     enum {Idle, BtnDown1, BtnUp1, BtnDown2 } dblclick_state;
     uint64_t dblclick_start;
     int itemAt(unsigned px, unsigned py);
-    void scrollChanged(unsigned position);
+    void scrollChanged(unsigned int /*position*/);
   public:
     ListBox(Container *parent);
     ~ListBox();

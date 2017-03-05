@@ -10,7 +10,7 @@ private:
   int m_allocated;
   unsigned m_zorder;
   unsigned m_priority;
-  struct sprite_info m_info;
+  sprite_info m_info;
   void triggerUpload();
   static void checkAllocations();
   static void doRegister(Sprite *sprite);
@@ -28,6 +28,7 @@ public:
   // check isAllocated if you need to know if it is actually visible.
   void setVisible(bool visible);
   void setSpriteInfo(struct sprite_info const &info);
+  sprite_info const &info() { return m_info; }
   bool isAllocated();
 };
 

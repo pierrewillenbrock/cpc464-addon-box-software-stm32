@@ -279,7 +279,7 @@ void DSK::fillSectorInfoAndComplete() {
 	c->completion(d, c);
 }
 
-void DSK::findSectorReadComplete(int res, int errno, PReadCommand *command) {
+void DSK::findSectorReadComplete(int res, int /*errno*/, PReadCommand */*command*/) {
 	DiskFindSectorCommand *c = current_command;
 	if (res == -1) {
 		current_cylinderno = ~0U;
@@ -515,7 +515,7 @@ void ExtDSK::fillSectorInfoAndComplete() {
 	c->completion(d, c);
 }
 
-void ExtDSK::findSectorReadComplete(int res, int errno, PReadCommand *command) {
+void ExtDSK::findSectorReadComplete(int res, int /*errno*/, PReadCommand */*command*/) {
 	DiskFindSectorCommand *c = current_command;
 	if (res == -1) {
 		current_cylinderno = ~0U;

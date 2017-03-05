@@ -7,6 +7,7 @@
 #include <lang.hpp>
 #include <bits.h>
 #include <irq.h>
+#include <eventlogger.hpp>
 
 #include <algorithm>
 #include <string.h>
@@ -21,6 +22,7 @@ USBDevice::USBDevice(USBSpeed speed)
 	, state(None)
 	, rconfiguration(NULL)
 	, econfiguration(NULL)
+	, claimed(NULL)
 {
 	USBEndpoint *ne = new USBEndpoint(*this);
 	endpoints.push_back(ne);
@@ -32,8 +34,11 @@ USBDevice::USBDevice(USBSpeed speed)
 }
 
 USBDevice::~USBDevice() {
+	if (state == Address)
+		USB_activationComplete();
 	USB_deactivateAddress(eaddress);
 	for(auto ep : endpoints) {
+		USB_killEndpoint(ep);
 		delete ep;
 	}
 }
@@ -117,7 +122,7 @@ void USBDevice::prepareStringFetch(uint8_t id) {
 	urb.u.setup.bmRequestType = 0x80;
 	urb.u.setup.bRequest = 6;
 	urb.u.setup.wValue = (3 << 8) | id;//STRING descriptor type, index id
-	urb.u.setup.wIndex = 0;//default language? otherwise, we need to pull index 0 first to get the list of supported LANGIDs, or use a constant default here.
+	urb.u.setup.wIndex = 0x409;//the right thing to do is to pull id 0, take any langid we like, then default to 0x409. but windows pretty much requires to have 0x409 in first position there, so we could go for that exclusively as well.
 	urb.u.setup.wLength = 7; //for now, just pull 7. there is enough info in there to determine the size.
 	descriptordata.resize(7);
 	urb.u.buffer = descriptordata.data();
@@ -139,12 +144,27 @@ void USBDevice::prepareConfigurationFetch(uint8_t id) {
 void USBDevice::urbCompletion(int result, URB *u) {
 	assert(isRWPtr(u));
 	if (result != 0) {
+		if (state == DescDevice8) {
+			LogEvent("USBDevice: Resend, DescDevice8");
+			//we need to try all the sizes, some devices just
+			//emit STALL if we get it too small.
+			u->setup.wLength *= 2;
+			if (u->setup.wLength > 64)
+				u->setup.wLength = 8;
+			endpoints[0]->max_packet_length = u->setup.wLength;
+			descriptordata.resize(u->setup.wLength);
+			u->buffer = descriptordata.data();
+			u->buffer_len = descriptordata.size();
+		} else {
+			LogEvent("USBDevice: Resend");
+		}
 		//try again
 		USB_submitURB(u);
 		return;
 	}
 	switch(state) {
 	case Address: {
+		LogEvent("USBDevice: Address");
 		//now that the address has been set on the device, we need
 		//to update our effective address
 		eaddress = u->setup.wValue;
@@ -157,7 +177,7 @@ void USBDevice::urbCompletion(int result, URB *u) {
 		u->setup.wValue = (1 << 8) | 0;//DEVICE descriptor type, index 0
 		u->setup.wIndex = 0;//no language
 		u->setup.wLength = 8; //for now, just pull 8. need to increase this for the full descriptor.
-		descriptordata.resize(8);
+		descriptordata.resize(u->setup.wLength);
 		u->buffer = descriptordata.data();
 		u->buffer_len = descriptordata.size();
 
@@ -166,21 +186,29 @@ void USBDevice::urbCompletion(int result, URB *u) {
 		break;
 	}
 	case DescDevice8: {
+		LogEvent("USBDevice: DescDevice8");
 		USBDescriptorDevice *d = (USBDescriptorDevice*)
 			descriptordata.data();
 		assert(isRWPtr(d));
 		endpoints[0]->max_packet_length = d->bMaxPacketSize0;
 
-		u->setup.wLength = d->bLength;
-		descriptordata.resize(d->bLength);
-		u->buffer = descriptordata.data();
-		u->buffer_len = descriptordata.size();
+		if (u->buffer_received < d->bLength) {
+			u->setup.wLength = d->bLength;
+			descriptordata.resize(d->bLength);
+			u->buffer = descriptordata.data();
+			u->buffer_len = descriptordata.size();
 
-		state = DescDevice;
-		USB_submitURB(u);
-		break;
+			state = DescDevice;
+			USB_submitURB(u);
+			break;
+		} else {
+			//we have all the data needed
+			state = DescDevice;
+			//and fall through.
+		}
 	}
 	case DescDevice:
+		LogEvent("USBDevice: DescDevice");
 		deviceDescriptor = *(USBDescriptorDevice*)
 			descriptordata.data();
 
@@ -205,6 +233,7 @@ void USBDevice::urbCompletion(int result, URB *u) {
 		}
 		break;
 	case FetchManuString: {
+		LogEvent("USBDevice: FetchManuString");
 		USBDescriptorString *d = (USBDescriptorString *)
 			descriptordata.data();
 		assert(isRWPtr(d));
@@ -239,6 +268,7 @@ void USBDevice::urbCompletion(int result, URB *u) {
 		break;
 	}
 	case FetchProdString: {
+		LogEvent("USBDevice: FetchProdString");
 		USBDescriptorString *d = (USBDescriptorString *)
 			descriptordata.data();
 		assert(isRWPtr(d));
@@ -269,6 +299,7 @@ void USBDevice::urbCompletion(int result, URB *u) {
 		break;
 	}
 	case FetchConfigurations: {
+		LogEvent("USBDevice: FetchConfigurations");
 		USBDescriptorConfiguration *d = (USBDescriptorConfiguration *)
 			descriptordata.data();
 		assert(isRWPtr(d));
@@ -297,7 +328,25 @@ void USBDevice::urbCompletion(int result, URB *u) {
 		break;
 	}
 	case Configuring: {
+		LogEvent("USBDevice: Configuring");
 		econfiguration = rconfiguration;
+
+		for(auto &intf : econfiguration->interfaces) {
+			intf.eAlternateSetting =
+				intf.alternateSettings.front().descriptor.bAlternateSetting;
+			updateEndpoints(intf);
+
+			if(intf.claimed &&
+			   intf.eAlternateSetting == intf.rAlternateSetting) {
+				assert(isRWPtr(intf.claimed));
+				intf.claimed->interfaceClaimed
+					(intf.interfaceNumber,
+					 intf.rAlternateSetting);
+			}
+		}
+
+		if (claimed)
+			claimed->deviceClaimed();
 		urb.u.endpoint = NULL;
 		ISR_Guard g;
 		state = Configured;
@@ -305,6 +354,7 @@ void USBDevice::urbCompletion(int result, URB *u) {
 		break;
 	}
 	case ConfiguringInterfaces: {
+		LogEvent("USBDevice: ConfiguringInterfaces");
 		urb.u.endpoint = NULL;
 		ISR_Guard g;
 
@@ -365,8 +415,11 @@ void USBDevice::activate() {
 void USBDevice::disconnected() {
 	//also trigger all that is needed to drop all the references to us
 	//if that is not done otherwise.
+	if (state == Address)
+		USB_activationComplete();
 	state = Disconnected;
 	USB_unregisterDevice(this);
+
 	if (rconfiguration) {
 		assert(isRWPtr(rconfiguration));
 		for(auto &intf : rconfiguration->interfaces) {
@@ -375,7 +428,20 @@ void USBDevice::disconnected() {
 				intf.claimed->disconnected(this);
 			}
 		}
+		if (claimed) {
+			assert(isRWPtr(claimed));
+			claimed->disconnected(this);
+		}
 	}
+
+	USB_deactivateAddress(eaddress);
+
+	ISR_Guard g;
+	for(auto ep : endpoints) {
+		USB_killEndpoint(ep);
+		delete ep;
+	}
+	endpoints.clear();
 }
 
 RefPtr<USBEndpoint> USBDevice::getEndpoint(uint8_t address) {
@@ -438,10 +504,10 @@ void USBDevice::configureInterfaces() {
 				urb.u.completion = _urbCompletion;
 
 				USB_submitURB(&urb.u);
+				return;
 			} else {
 				intf.eAlternateSetting =
 					intf.rAlternateSetting;
-				updateEndpoints(intf);
 				assert(isRWPtr(intf.claimed));
 				intf.claimed->interfaceClaimed
 				  (intf.interfaceNumber,
@@ -456,6 +522,8 @@ bool USBDevice::claimInterface(uint8_t bInterfaceNumber,
 			       USBDriverDevice *dev) {
 	ISR_Guard g;
 	if (!rconfiguration)
+		return false;
+	if (claimed)
 		return false;
 	assert(isRWPtr(rconfiguration));
 	auto iit = std::find_if(rconfiguration->interfaces.begin(),
@@ -482,6 +550,25 @@ bool USBDevice::claimInterface(uint8_t bInterfaceNumber,
 	return true;
 }
 
+bool USBDevice::claimDevice(USBDriverDevice *dev) {
+	ISR_Guard g;
+	if (!rconfiguration)
+		return false;
+	if (claimed)
+		return false;
+	assert(isRWPtr(rconfiguration));
+	for(auto &intf : rconfiguration->interfaces) {
+		if (intf.claimed)
+			return false;
+	}
+	claimed = dev;
+
+	if (state == Configured)
+		dev->deviceClaimed();
+
+	return true;
+}
+
 void USBDevice::updateEndpoints(Interface &intf) {
 	for(auto &altset : intf.alternateSettings) {
 		for(auto &ep : altset.endpoints) {
@@ -494,6 +581,7 @@ void USBDevice::updateEndpoints(Interface &intf) {
 			if (eit != endpoints.end()) {
 				USBEndpoint * uep = *eit;
 				endpoints.erase(eit);
+				USB_killEndpoint(uep);
 				delete uep;
 			}
 		}

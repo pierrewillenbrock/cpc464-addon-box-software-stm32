@@ -5,6 +5,9 @@
 #include <assert.h>
 #include <bsp/core_cm4.h>
 
+#define MPROT_ENABLE 1
+
+#ifdef MPROT_ENABLE
 #define ALLOC_LIST_SIZE 1024
 static struct Alloc {
   void *ptr;
@@ -14,6 +17,7 @@ static struct Alloc {
 
 extern char _bheap[];//top of data section
 extern char _eheap[];//bottom of stack section
+#endif
 
 /* we only override the default memory map as needed, that is: for the
    section between _bheap and _eheap.
@@ -22,6 +26,7 @@ extern "C" {
   void MPROT_Setup();
 }
 
+#ifdef MPROT_ENABLE
 static uint8_t region_min = 0;
 static uint8_t region_count = 0;
 
@@ -30,8 +35,10 @@ static struct {
   uint32_t base;
   uint32_t gen;
 } regions[16];
+#endif
 
 void MPROT_Setup() {
+#ifdef MPROT_ENABLE
   SCB_Type *scb = SCB;
   MPU_Type *mpu = MPU;
 
@@ -77,8 +84,10 @@ void MPROT_Setup() {
   mpu->CTRL = 5;
   __ISB();
   __DSB();
+#endif
 }
 
+#ifdef MPROT_ENABLE
 static void mprot_unprotect() {
   MPU_Type *mpu = MPU;
   mpu->CTRL = 0;
@@ -276,36 +285,50 @@ static size_t findsize(void *ptr) {
   assert(i<ALLOC_LIST_SIZE);
   return 0;
 }
+#endif
 
 extern "C" {
   void *__real__calloc_r(struct _reent *r, size_t nmemb, size_t size);
   void *__wrap__calloc_r(struct _reent *r, size_t nmemb, size_t size) {
+#ifdef MPROT_ENABLE
     mprot_unprotect();
+#endif
     void *p = __real__calloc_r(r, nmemb, size);
+#ifdef MPROT_ENABLE
     mprot_protect();
     calloc_hook(p, nmemb, size);
+#endif
     return p;
   }
 
   void *__real__malloc_r(struct _reent *r, size_t size);
   void *__wrap__malloc_r(struct _reent *r, size_t size) {
+#ifdef MPROT_ENABLE
     mprot_unprotect();
+#endif
     void *p = __real__malloc_r(r,size);
+#ifdef MPROT_ENABLE
     mprot_protect();
     malloc_hook(p, size);
+#endif
     return p;
   }
 
   void __real__free_r(struct _reent *r, void *ptr);
   void __wrap__free_r(struct _reent *r, void *ptr) {
+#ifdef MPROT_ENABLE
     free_hook(ptr);
     mprot_unprotect();
+#endif
     __real__free_r(r,ptr);
+#ifdef MPROT_ENABLE
     mprot_protect();
+#endif
   }
 
   void *__real__realloc_r(struct _reent *r, void *ptr, size_t size);
   void *__wrap__realloc_r(struct _reent *r, void *ptr, size_t size) {
+#ifdef MPROT_ENABLE
 #if 1
     ISR_Guard g;
     size_t oldsize = findsize(ptr);
@@ -323,13 +346,20 @@ extern "C" {
     realloc_hook(p, ptr, size);
     return p;
 #endif
+#else
+    return __real__realloc_r(r,ptr,size);
+#endif
   }
 
   void __real__malloc_stats_r(struct _reent *r);
   void __wrap__malloc_stats_r(struct _reent *r) {
+#ifdef MPROT_ENABLE
     mprot_unprotect();
+#endif
     __real__malloc_stats_r(r);
+#ifdef MPROT_ENABLE
     mprot_protect();
+#endif
   }
 }
 

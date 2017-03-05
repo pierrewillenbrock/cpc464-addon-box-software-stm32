@@ -5,9 +5,8 @@
  extern "C" {
 #endif
 
-void USBHID_Setup();
+void USBHUB_Setup();
 
 #ifdef __cplusplus
  }
 #endif
-

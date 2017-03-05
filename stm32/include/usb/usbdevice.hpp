@@ -8,7 +8,7 @@
 #include <refcounted.hpp>
 
 #include <usb/usb.hpp>
-#include <usb/usbproto.h>
+#include <usbproto/usb.h>
 
 struct USBEndpoint;
 
@@ -75,6 +75,7 @@ private:
 	std::vector<Configuration> configurations;
 	Configuration *rconfiguration; ///< selected configuration
 	Configuration *econfiguration; ///< effective configuration
+	USBDriverDevice *claimed;
 
 	void urbCompletion(int result, URB *u);
 	static void _urbCompletion(int result, URB *u);
@@ -89,11 +90,14 @@ public:
 	void activate();
 	void disconnected();
 	RefPtr<USBEndpoint> getEndpoint(uint8_t address);
-	std::vector<Configuration> const &getConfigurations() {
+	USBDescriptorDevice const &getDeviceDescriptor() const {
+		return deviceDescriptor;
+	}
+	std::vector<Configuration> const &getConfigurations() const {
 		return configurations;
 	}
-	Configuration const *getSelectedConfiguration() {
-		return NULL;
+	Configuration const *getSelectedConfiguration() const {
+		return rconfiguration;
 	}
 	AlternateSetting const *getAlternateSetting(uint8_t interfaceNumber, uint8_t alternateSetting) {
 		if(!econfiguration)
@@ -120,4 +124,7 @@ public:
 	bool claimInterface(uint8_t bInterfaceNumber,
 			    uint8_t bAlternateSetting,
 			    USBDriverDevice *dev);
+	//claim the device. if it is already in use,
+	//does not claim and returns false
+	bool claimDevice(USBDriverDevice *dev);
 };

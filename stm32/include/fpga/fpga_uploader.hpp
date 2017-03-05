@@ -19,7 +19,7 @@ private:
 	//not copyable.
 	FPGA_Uploader(FPGA_Uploader const &) {}
 	FPGA_Uploader &operator=(FPGA_Uploader const &) {return *this;}
-	void cmpl(int result, FPGAComm_Command *command) {
+	void cmpl(int /*result*/, FPGAComm_Command */*command*/) {
 		ISR_Guard g;
 		switch(state) {
 		case Clean: assert(0); break;

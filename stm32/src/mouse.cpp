@@ -21,8 +21,8 @@ public:
 	uint16_t sprite_map_base;
 	virtual void inputReport(InputReport const &rep);
 	MouseInput()
-		: x(ui::screenRect().width*mouse_scale/2)
-		, y(ui::screenRect().height*mouse_scale/2)
+		: x(ui::screen.rect().width*mouse_scale/2)
+		, y(ui::screen.rect().height*mouse_scale/2)
 		{}
 };
 
@@ -32,8 +32,8 @@ void MouseInput::inputReport(InputReport const &rep) {
 		int32_t nx = x + rep.value;
 		if (nx < 0)
 			nx = 0;
-		if (nx > ui::screenRect().width*mouse_scale)
-			nx = ui::screenRect().width*mouse_scale;
+		if (nx > ui::screen.rect().width*mouse_scale)
+			nx = ui::screen.rect().width*mouse_scale;
 		x = nx;
 		dx += rep.value;
 		int rdx = 0;
@@ -45,16 +45,16 @@ void MouseInput::inputReport(InputReport const &rep) {
 			rdx--;
 			dx += mouse_scale;
 		}
-		UI_mouseMove(ui::screenRect().x + x/mouse_scale,
-			     ui::screenRect().y + y/mouse_scale, rdx, 0);
+		UI_mouseMove(ui::screen.rect().x + x/mouse_scale,
+			     ui::screen.rect().y + y/mouse_scale, rdx, 0);
 	}
 	if ((rep.flags & 1) && rep.usage == 0x10031) {
 		// Y axis motion.
 		int32_t ny = y + rep.value;
 		if (ny < 0)
 			ny = 0;
-		if (ny > ui::screenRect().height*mouse_scale)
-			ny = ui::screenRect().height*mouse_scale;
+		if (ny > ui::screen.rect().height*mouse_scale)
+			ny = ui::screen.rect().height*mouse_scale;
 		y = ny;
 		dy += rep.value;
 		int rdy = 0;
@@ -66,8 +66,8 @@ void MouseInput::inputReport(InputReport const &rep) {
 			rdy--;
 			dy += mouse_scale;
 		}
-		UI_mouseMove(ui::screenRect().x + x/mouse_scale,
-			     ui::screenRect().y + y/mouse_scale, 0, rdy);
+		UI_mouseMove(ui::screen.rect().x + x/mouse_scale,
+			     ui::screen.rect().y + y/mouse_scale, 0, rdy);
 	}
 	if ((rep.flags & 1) && rep.usage == 0x10038) {
 		// wheel
@@ -75,8 +75,8 @@ void MouseInput::inputReport(InputReport const &rep) {
 	}
 	if ((((rep.flags & 1) && rep.usage == 0x10030) ||
 	     ((rep.flags & 1) && rep.usage == 0x10031))) {
-		spriteinfo.hpos = x/mouse_scale+ui::screenRect().x;
-		spriteinfo.vpos = y/mouse_scale+ui::screenRect().y;
+		spriteinfo.hpos = x/mouse_scale+ui::screen.rect().x;
+		spriteinfo.vpos = y/mouse_scale+ui::screen.rect().y;
 		sprite.setSpriteInfo(spriteinfo);
 		sprite.setVisible(true);
 	}
@@ -141,8 +141,8 @@ void Mouse_Setup() {
 	mouseinput.sprite_map_base = sprite_alloc_vmem(2, 1, ~0U);
 	uint32_t map[] = {
 		//operator + promotes to (int), even if all arguments are uint8_t
-		(mouseinput.sprite_tile_base + 0) << 2,
-		(mouseinput.sprite_tile_base + 1) << 2,
+		uint32_t((mouseinput.sprite_tile_base + 0) << 2),
+		uint32_t((mouseinput.sprite_tile_base + 1) << 2),
 	};
 	FPGAComm_CopyToFPGA(FPGA_GRPH_SPRITES_RAM +
 			    mouseinput.sprite_map_base*4,

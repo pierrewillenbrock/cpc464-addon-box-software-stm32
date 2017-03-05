@@ -226,37 +226,37 @@ static struct MSD_Info sdcard_info = {
 	0, 512, NULL, SDcard_readSectors, SDcard_writeSectors
 };
 
-static void SDcard_init_power(void *unused);
-static void SDcard_init_clock(void *unused);
+static void SDcard_init_power(void */*unused*/);
+static void SDcard_init_clock(void */*unused*/);
 static void SDcard_init_reset();
-static void SDcard_init_reset_cmpl(int result, struct SDCommand *unused);
+static void SDcard_init_reset_cmpl(int result, struct SDCommand */*unused*/);
 static void SDcard_init_interface_condition();
-static void SDcard_init_interface_condition_cmpl(int result, struct SDCommand *unused);
+static void SDcard_init_interface_condition_cmpl(int result, struct SDCommand */*unused*/);
 static void SDcard_init_sdcard_probe();
-static void SDcard_init_sdcard_probe_cmpl(int result, struct SDCommand *unused);
+static void SDcard_init_sdcard_probe_cmpl(int result, struct SDCommand */*unused*/);
 static void SDcard_init_operation_condition();
-static void SDcard_init_operation_condition_cmpl(int result, struct SDCommand *unused);
-static void SDcard_init_operation_condition_timer(void *unused);
+static void SDcard_init_operation_condition_cmpl(int result, struct SDCommand */*unused*/);
+static void SDcard_init_operation_condition_timer(void */*unused*/);
 static void SDcard_init_get_CID();
-static void SDcard_init_get_CID_cmpl(int result, struct SDCommand *unused);
+static void SDcard_init_get_CID_cmpl(int result, struct SDCommand */*unused*/);
 static void SDcard_init_set_addr();
-static void SDcard_init_set_addr_cmpl(int result, struct SDCommand *unused);
+static void SDcard_init_set_addr_cmpl(int result, struct SDCommand */*unused*/);
 static void SDcard_init_get_CSD();
-static void SDcard_init_get_CSD_cmpl(int result, struct SDCommand *unused);
+static void SDcard_init_get_CSD_cmpl(int result, struct SDCommand */*unused*/);
 static void SDcard_init_select_card();
-static void SDcard_init_select_card_cmpl(int result, struct SDCommand *unused);
+static void SDcard_init_select_card_cmpl(int result, struct SDCommand */*unused*/);
 static void SDcard_init_get_SCR();
-static void SDcard_init_get_SCR_cmpl(int result, struct SDCommand *unused);
+static void SDcard_init_get_SCR_cmpl(int result, struct SDCommand */*unused*/);
 static void SDcard_init_set_blocksize();
-static void SDcard_init_set_blocksize_cmpl(int result, struct SDCommand *unused);
+static void SDcard_init_set_blocksize_cmpl(int result, struct SDCommand */*unused*/);
 static void SDcard_init_set_bus_width();
-static void SDcard_init_set_bus_width_cmpl(int result, struct SDCommand *unused);
+static void SDcard_init_set_bus_width_cmpl(int result, struct SDCommand */*unused*/);
 static void SDcard_init_finish();
 
 static void SDcard_init_get_status();
-static void SDcard_init_get_status_cmpl(int result, struct SDCommand *unused);
+static void SDcard_init_get_status_cmpl(int result, struct SDCommand */*unused*/);
 
-static void SDcard_init_power(void *unused) {
+static void SDcard_init_power(void */*unused*/) {
 	//irq context: cannot wait here for long. need to drive it using irqs.
 	//switch pins back to AF
 	GPIO_ResetBits(SD_PWR_GPIO, SD_PWR_PIN);//switch it on
@@ -266,7 +266,7 @@ static void SDcard_init_power(void *unused) {
 	timer_handle = Timer_Oneshot(10000, SDcard_init_clock, NULL);
 }
 
-static void SDcard_init_clock(void *unused) {
+static void SDcard_init_clock(void */*unused*/) {
 	//irq context: cannot wait here for long. need to drive it using irqs.
 	SDIO_ClockEnable();
 
@@ -287,7 +287,7 @@ static void SDcard_init_reset() {
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_reset_cmpl(int result, struct SDCommand *unused) {
+static void SDcard_init_reset_cmpl(int result, struct SDCommand */*unused*/) {
 	if (result == SDIO_SystemTimeout)
 		return;
 
@@ -308,7 +308,7 @@ static void SDcard_init_interface_condition() {
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_interface_condition_cmpl(int result, struct SDCommand *unused) {
+static void SDcard_init_interface_condition_cmpl(int result, struct SDCommand */*unused*/) {
 	if (result != SDIO_OK &&
 	    result != SDIO_CommandTimeout) {
 		return;
@@ -341,7 +341,7 @@ static void SDcard_init_sdcard_probe() {
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_sdcard_probe_cmpl(int result, struct SDCommand *unused) {
+static void SDcard_init_sdcard_probe_cmpl(int result, struct SDCommand */*unused*/) {
 	if (result != SDIO_OK) {
 		return;
 	}
@@ -367,7 +367,7 @@ static void SDcard_init_operation_condition() {
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_operation_condition_cmpl(int result, struct SDCommand *unused) {
+static void SDcard_init_operation_condition_cmpl(int result, struct SDCommand */*unused*/) {
 	if (result != SDIO_OK &&
 	    result != SDIO_SystemTimeout &&
 	    result != SDIO_CommandTimeout &&
@@ -412,7 +412,7 @@ static void SDcard_init_operation_condition_cmpl(int result, struct SDCommand *u
 	SDcard_init_get_CID();
 }
 
-static void SDcard_init_operation_condition_timer(void *unused) {
+static void SDcard_init_operation_condition_timer(void */*unused*/) {
 	SDcard_init_operation_condition();
 }
 
@@ -429,7 +429,7 @@ static void SDcard_init_get_CID() {
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_get_CID_cmpl(int result, struct SDCommand *unused) {
+static void SDcard_init_get_CID_cmpl(int result, struct SDCommand */*unused*/) {
 	if (result != SDIO_OK)
 		return;
 
@@ -457,7 +457,7 @@ static void SDcard_init_set_addr() {
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_set_addr_cmpl(int result, struct SDCommand *unused) {
+static void SDcard_init_set_addr_cmpl(int result, struct SDCommand */*unused*/) {
 	if (result != SDIO_OK)
 		return;
 
@@ -487,7 +487,7 @@ static void SDcard_init_get_CSD() {
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_get_CSD_cmpl(int result, struct SDCommand *unused) {
+static void SDcard_init_get_CSD_cmpl(int result, struct SDCommand */*unused*/) {
 	if (result != SDIO_OK)
 		return;
 
@@ -530,7 +530,7 @@ static void SDcard_init_select_card() {
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_select_card_cmpl(int result, struct SDCommand *unused) {
+static void SDcard_init_select_card_cmpl(int result, struct SDCommand */*unused*/) {
 	if (result != SDIO_OK)
 		return;
 
@@ -551,7 +551,7 @@ static void SDcard_init_get_status() {
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_get_status_cmpl(int result, struct SDCommand *unused) {
+static void SDcard_init_get_status_cmpl(int result, struct SDCommand */*unused*/) {
 	if (result != SDIO_OK) {
 		return;
 	}
@@ -577,7 +577,7 @@ static void SDcard_init_get_SCR() {
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_get_SCR_cmpl(int result, struct SDCommand *unused) {
+static void SDcard_init_get_SCR_cmpl(int result, struct SDCommand */*unused*/) {
 	if (result != SDIO_OK)
 		return;
 
@@ -603,7 +603,7 @@ static void SDcard_init_set_blocksize() {
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_set_blocksize_cmpl(int result, struct SDCommand *unused) {
+static void SDcard_init_set_blocksize_cmpl(int result, struct SDCommand */*unused*/) {
 	if (result != SDIO_OK)
 		return;
 
@@ -630,7 +630,7 @@ static void SDcard_init_set_bus_width() {
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_set_bus_width_cmpl(int result, struct SDCommand *unused) {
+static void SDcard_init_set_bus_width_cmpl(int result, struct SDCommand */*unused*/) {
 	if (result != SDIO_OK)
 		return;
 
@@ -749,7 +749,7 @@ static void SDcard_dequeueNextCommand() {
 	}
 }
 
-static void SDcard_readSectors(void *unused, struct MSDReadCommand *command) {
+static void SDcard_readSectors(void */*unused*/, struct MSDReadCommand *command) {
 	ISR_Guard g;
 	if (currentCommand.readcmd || currentCommand.writecmd) {
 		SDcard_rwCommand c = {command , NULL};
@@ -841,7 +841,7 @@ static void SDcard_read_sectors3_cmpl(int result, struct SDCommand *sdcommand) {
 	SDcard_dequeueNextCommand();
 }
 
-static void SDcard_writeSectors(void *unused, struct MSDWriteCommand *command) {
+static void SDcard_writeSectors(void */*unused*/, struct MSDWriteCommand *command) {
 	ISR_Guard g;
 	if (currentCommand.readcmd || currentCommand.writecmd) {
 		SDcard_rwCommand c = { NULL, command };

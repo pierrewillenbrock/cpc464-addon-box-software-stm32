@@ -1,3 +1,10 @@
+/* todo: if we detect a hung bus (i.E. when a URB takes a long time
+   to complete, like across a SOF), we set the PENA bit of HPRT.
+   if there is no device connected at that point, all is fine. otherwise,
+   we may have to do another bus reset cycle. need to figure that last part
+   out while doing. but first, need the timeout infrastructure.
+ */
+
 
 #include <usb/usb.hpp>
 
@@ -9,7 +16,9 @@
 #include <deque>
 #include <bitset>
 #include <array>
+#include <eventlogger.hpp>
 
+#include "usbhub.h"
 #include "usbdev.h"
 #include "usbchannel.hpp"
 #include <usb/usbdevice.hpp>
@@ -25,7 +34,7 @@ struct USBDeviceActivation {
 static std::deque<URB*> USB_URBqueue;
 static std::deque<USBDeviceActivation> USB_activationQueue;
 static USBDeviceActivation USB_activationCurrent;
-static std::array<USBChannel,12> channels({0,1,2,3,4,5,6,7,8,9,10,11});
+static std::array<USBChannel,8> channels({{0,1,2,3,4,5,6,7}});
 
 OTG_Core_TypeDef * otgc = OTGF_CORE;
 OTG_Host_TypeDef * otgh = OTGF_HOST;
@@ -63,12 +72,14 @@ static void configureFifos() {
 		}
 	}
 	rx_size = fifo_size - ptx_size - nptx_size;
-	otgc->GRXFSIZ = rx_size; //todo: check if this is << 0 or << 16 (like the others)(evidence points towards << 0)
+	otgc->GRXFSIZ = rx_size; //this is << 0, unlike << 16 below.
 	otgc->HNPTXFSIZ = (nptx_size << 16) | (rx_size << 0);
 	otgc->HPTXFSIZ = (ptx_size << 16) | ((rx_size + nptx_size) << 0);
 }
 
 static void USB_RegInit() {
+	otgc->GINTMSK = 0;
+
 	otgc->GUSBCFG = OTG_GUSBCFG_PHYSEL;
 
 	otgc->GRSTCTL |= OTG_GRSTCTL_CSRST;
@@ -78,6 +89,11 @@ static void USB_RegInit() {
 	//GINTMSK=1 => unmasked, periodic txfifo irq on empty
 	otgc->GAHBCFG = OTG_GAHBCFG_GINTMSK;
 	//GUSBCFG: HNP, SRP bit, FS timeout calibration, USB turnaround
+	//todo: TOCAL. not all that clear what goes here.
+	//documentation tells us that it adds 0.25 PHY clk/lsb to the
+	//default timeout, i.E. 0-1.75 PHY clks. full speed timeout is 16-18
+	//bit times(inclusive). it also tells us that this depends on
+	//enumerated speed.
 	otgc->GUSBCFG &= ~OTG_GUSBCFG_TOCAL_MASK;
 	otgc->GUSBCFG |= (4 << OTG_GUSBCFG_TOCAL_SHIFT);
 	//force host mode
@@ -96,10 +112,18 @@ static void USB_RegInit() {
 	//setup fifos
 	configureFifos();
 
+	otgc->GINTSTS = 0xffffffff;
 	//host mode initialisation
 	//GINTMSK: HPRTINT
 	otgc->GINTMSK |= OTG_GINTMSK_PRTIM
-		| OTG_GINTMSK_HCIM;
+		| OTG_GINTMSK_HCIM
+		| OTG_GINTMSK_RXFLVLM
+		| OTG_GINTMSK_SOFM
+		| OTG_GINTMSK_WUIM
+		| OTG_GINTMSK_DISCINT
+		| OTG_GINTMSK_IPXFRM   //once we have useful scheduling for periodic irqs, this bit serves as a good indicator of errors and should never be on.
+		| OTG_GINTMSK_OTGINT
+		| OTG_GINTMSK_MMISM;
 }
 
 void USB_Setup() {
@@ -128,12 +152,15 @@ void USB_Setup() {
 
 	USB_RegInit();
 	otgh->HFIR = 48000;
+
+	USBHUB_Setup();
 }
 
 static std::vector<USBDriver *> usb_drivers;
 static std::deque<RefPtr<USBDevice> > usb_devices;
 
 void USB_registerDevice(USBDevice *device) {
+	LogEvent("USB_registerDevice");
 	ISR_Guard g;
 	usb_devices.push_back(device);
 	//go through the registered drivers and make them probe the device
@@ -143,7 +170,20 @@ void USB_registerDevice(USBDevice *device) {
 	}
 }
 
+void USB_killEndpoint(USBEndpoint *endpoint) {
+	ISR_Guard g;
+	for(auto &ch : channels)
+		ch.killEndpoint(endpoint);
+	for(auto it = USB_URBqueue.begin(); it != USB_URBqueue.end();) {
+		if ((*it)->endpoint == endpoint)
+			it = USB_URBqueue.erase(it);
+		else
+			it++;
+	}
+}
+
 void USB_unregisterDevice(USBDevice *device) {
+	LogEvent("USB_unregisterDevice");
 	ISR_Guard g;
 	for(auto it = usb_devices.begin(); it != usb_devices.end(); it++) {
 		if (*it == device) {
@@ -210,7 +250,8 @@ URB *USB_getNextURB() {
 	return u;
 }
 
-static void USB_queueDeviceActivation(void (*activate)(void*data),void *data) {
+void USB_queueDeviceActivation(void (*activate)(void*data),void *data) {
+	LogEvent("USB_queueDeviceActivation");
 	bool directActivate = false;
 	{
 		ISR_Guard g;
@@ -232,6 +273,7 @@ static void USB_queueDeviceActivation(void (*activate)(void*data),void *data) {
 static std::bitset<128> used_addresses;
 
 void USB_activationComplete() {
+	LogEvent("USB_activationComplete");
 	{
 		ISR_Guard g;
 		if (USB_activationQueue.empty()) {
@@ -251,12 +293,13 @@ uint8_t USB_getNextAddress() {
 	uint8_t addr = 0;
 	if (usb_address == 0 || usb_address > 127)
 		usb_address = 1;
-	while(addr != 0 && !used_addresses[addr]) {
-		addr = usb_address;
+	addr = usb_address;
+	while(used_addresses[addr]) {
 		if (usb_address >= 127)
 			usb_address = 1;
 		else
 			usb_address++;
+		addr = usb_address;
 	}
 	used_addresses[addr] = true;
 	return addr;
@@ -267,7 +310,8 @@ void USB_deactivateAddress(uint8_t address) {
 	used_addresses[address] = false;
 }
 
-static void activateRootDevice(void *unused) {
+static void activateRootDevice(void */*unused*/) {
+	LogEvent("USB:activateRootDevice");
 	//the irq handler does most of the work for us here,
 	//but an usb hub driver would have to queue port enable,
 	//device reset and only then create the device.
@@ -282,7 +326,9 @@ static void activateRootDevice(void *unused) {
 
 static uint32_t timer_handle = 0;
 
-static void USB_PortResetTimer(void *unused) {
+static void USB_PortResetTimer(void */*unused*/) {
+	timer_handle = 0;
+	LogEvent("USB_PortResetTimer");
 	//okay, we held reset for long enough.
 	uint32_t hprt = otgh->HPRT;
 	hprt &= ~(OTG_HPRT_PENCHNG|OTG_HPRT_PENA|OTG_HPRT_PCDET|OTG_HPRT_PRST);
@@ -290,12 +336,13 @@ static void USB_PortResetTimer(void *unused) {
 	//irq getting emitted now.
 }
 
-static void USB_PortResetBeginTimer(void *unused) {
+static void USB_PortResetBeginTimer(void */*unused*/) {
+	LogEvent("USB_PortResetBeginTimer");
 	uint32_t hprt = otgh->HPRT;
 	hprt &= ~(OTG_HPRT_PENCHNG|OTG_HPRT_PENA|OTG_HPRT_PCDET);
 	hprt |= OTG_HPRT_PRST;
 	otgh->HPRT = hprt;
-	timer_handle = Timer_Oneshot(11, USB_PortResetTimer, NULL);
+	timer_handle = Timer_Oneshot(11000, USB_PortResetTimer, NULL);
 }
 
 void OTG_FS_IRQHandler() {
@@ -305,7 +352,9 @@ void OTG_FS_IRQHandler() {
 	//* handle fifo interrupts(by passing them off to the channel(s))
 	uint32_t gintsts = otgc->GINTSTS & otgc->GINTMSK;
 	if (gintsts & OTG_GINTSTS_HPRTINT) {
+		gintsts &= ~OTG_GINTSTS_HPRTINT;
 		if (otgh->HPRT & OTG_HPRT_PCDET) {
+			LogEvent("USB: OTG_HPRT_PCDET");
 			//clear irq, start reset
 			//do we have to wait for 100ms here per spec 9.1.2,
 			//or does the controller wait for us?
@@ -314,12 +363,11 @@ void OTG_FS_IRQHandler() {
 			hprt |= OTG_HPRT_PCDET;
 			otgh->HPRT = hprt;
 			Timer_Cancel(timer_handle);
-			timer_handle = Timer_Oneshot(100, USB_PortResetBeginTimer, NULL);
+			timer_handle = Timer_Oneshot(100000, USB_PortResetBeginTimer, NULL);
 			if (rootDevice) {
 				rootDevice->disconnected();
 				rootDevice = NULL;
 			}
-			return;
 		}
 		if (otgh->HPRT & OTG_HPRT_PENCHNG) {
 			uint32_t hprt = otgh->HPRT;
@@ -327,10 +375,12 @@ void OTG_FS_IRQHandler() {
 			hprt |= OTG_HPRT_PENCHNG;
 			otgh->HPRT = hprt;
 			if (otgh->HPRT & OTG_HPRT_PENA) {
+				LogEvent("USB: OTG_HPRT_PENCHNG, PENA");
 				//port is now enabled, need to setup clocks etc and trigger enumeration
 				if ((otgh->HPRT & OTG_HPRT_PSPD_MASK) ==
 				    OTG_HPRT_PSPD_FS) {
 					if (otgh->HCFG != OTG_HCFG_FSLSPCS_48MHZ) {
+						LogEvent("USB: =>48MHz");
 						otgh->HCFG = OTG_HCFG_FSLSPCS_48MHZ;
 						USB_RegInit();
 						otgh->HFIR = 48000;
@@ -345,14 +395,16 @@ void OTG_FS_IRQHandler() {
 						hprt |= OTG_HPRT_PCDET;
 						hprt |= OTG_HPRT_PRST;
 						otgh->HPRT = hprt;
-						timer_handle = Timer_Oneshot(11, USB_PortResetTimer, NULL);
-						return;
+						Timer_Cancel(timer_handle);
+						timer_handle = Timer_Oneshot(11000, USB_PortResetTimer, NULL);
+					} else {
+						//now we need to create the new device
+						USB_queueDeviceActivation(activateRootDevice, NULL);
 					}
-					//now we need to create the new device
-					USB_queueDeviceActivation(activateRootDevice, NULL);
 				} else if ((otgh->HPRT & OTG_HPRT_PSPD_MASK) ==
 				    OTG_HPRT_PSPD_LS) {
 					if (otgh->HCFG != OTG_HCFG_FSLSPCS_6MHZ) {
+						LogEvent("USB: =>6MHz");
 						otgh->HCFG = OTG_HCFG_FSLSPCS_6MHZ;
 						USB_RegInit();
 						otgh->HFIR = 6000;
@@ -367,16 +419,19 @@ void OTG_FS_IRQHandler() {
 						hprt |= OTG_HPRT_PCDET;
 						hprt |= OTG_HPRT_PRST;
 						otgh->HPRT = hprt;
-						timer_handle = Timer_Oneshot(11, USB_PortResetTimer, NULL);
-						return;
+						Timer_Cancel(timer_handle);
+						timer_handle = Timer_Oneshot(11000, USB_PortResetTimer, NULL);
+					} else {
+						//now we need to create the new device
+						USB_queueDeviceActivation(activateRootDevice, NULL);
 					}
-					//now we need to create the new device
-					USB_queueDeviceActivation(activateRootDevice, NULL);
 				} else {
 					assert(0);
 				}
 			} else {
+				LogEvent("USB: OTG_HPRT_PENCHNG, !PENA");
 				if (otgh->HCFG != OTG_HCFG_FSLSPCS_48MHZ) {
+					LogEvent("USB: =>48MHz");
 					otgh->HCFG = OTG_HCFG_FSLSPCS_48MHZ;
 					USB_RegInit();
 					otgh->HFIR = 48000;
@@ -386,26 +441,26 @@ void OTG_FS_IRQHandler() {
 					rootDevice = NULL;
 				}
 			}
-			return;
 		}
 	}
 	if (gintsts & OTG_GINTSTS_PTXFE) {
+		gintsts &= ~OTG_GINTSTS_PTXFE;
 		for(auto &ch : channels)
 			ch.PTXPossible();
 		//if it did not clear PTXFE, mask it.
 		if (otgc->GINTSTS & OTG_GINTSTS_PTXFE)
 			otgc->GINTMSK &= ~OTG_GINTMSK_PTXFEM;
-		return;
 	}
 	if (gintsts & OTG_GINTSTS_NPTXFE) {
+		gintsts &= ~OTG_GINTSTS_NPTXFE;
 		for(auto &ch : channels)
 			ch.NPTXPossible();
 		//if it did not clear NPTXFE, mask it.
 		if (otgc->GINTSTS & OTG_GINTSTS_NPTXFE)
 			otgc->GINTMSK &= ~OTG_GINTMSK_NPTXFEM;
-		return;
 	}
 	if (gintsts & OTG_GINTSTS_RXFLVL) {
+		gintsts &= ~OTG_GINTSTS_RXFLVL;
 		//got a packet in RXFIFO. yay. find the channel it belongs to.
 		uint32_t grxsts = otgc->GRXSTSP;
 		unsigned channel = grxsts & OTG_GRXSTSR_CHNUM_MASK;
@@ -415,9 +470,9 @@ void OTG_FS_IRQHandler() {
 				(grxsts & OTG_GRXSTSR_BCNT_MASK) >> OTG_GRXSTSR_BCNT_SHIFT,
 				(grxsts & OTG_GRXSTSR_DPID_MASK) >> OTG_GRXSTSR_DPID_SHIFT);
 		}
-		return;
 	}
 	if (gintsts & OTG_GINTSTS_HCINT) {
+		gintsts &= ~OTG_GINTSTS_HCINT;
 		//find the channels
 		uint32_t haint = otgh->HAINT;
 		for(unsigned i = 0; i < channels.size(); i++) {
@@ -425,13 +480,24 @@ void OTG_FS_IRQHandler() {
 				channels[i].INT();
 			haint >>= 1;
 		}
-		return;
+	}
+	if (gintsts & OTG_GINTSTS_DISCINT) {
+		gintsts &= ~OTG_GINTSTS_DISCINT;
+		otgc->GINTSTS = OTG_GINTSTS_DISCINT;
+		LogEvent("USB: OTG_GINTSTS_DISCINT");
+		//we are handling this via the host port interrupt,
+		//so we could reasonable leave it masked.
+	}
+	if (gintsts & OTG_GINTSTS_IPXFR) {
+		gintsts &= ~OTG_GINTSTS_IPXFR;
+		otgc->GINTSTS = OTG_GINTSTS_IPXFR;
+		LogEvent("USB: OTG_GINTSTS_IPXFR");
 	}
 	if (gintsts & OTG_GINTSTS_SOF) {
+		gintsts &= ~OTG_GINTSTS_SOF;
 		otgc->GINTSTS = OTG_GINTSTS_SOF;
 		for(auto & ch : channels)
 			ch.SOF();
-		return;
 	}
 	if (gintsts)
 		assert(0);

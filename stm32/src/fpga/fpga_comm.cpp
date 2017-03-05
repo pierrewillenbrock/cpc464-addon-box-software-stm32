@@ -223,6 +223,10 @@ struct FPGAComm_FPGAComm_Command {
 };
 
 static void FPGAComm_Completion(int result, FPGAComm_Command *command) {
+	if (result != 0) {
+		FPGAComm_ReadWriteCommand(command);
+		return;
+	}
 	assert(isRPtr(command));
 	FPGAComm_FPGAComm_Command *c = container_of(command, FPGAComm_FPGAComm_Command, command);
 	c->completed = 1;
@@ -306,6 +310,10 @@ static FPGAComm_Command FPGAComm_IRQFetch_Command = {
 };
 
 static void FPGAComm_IRQFetch_Completion(int result, FPGAComm_Command *command) {
+	if (result != 0) {
+		FPGAComm_ReadWriteCommand(command);
+		return;
+	}
 	uint8_t status;
 	{
 		ISR_Guard g;

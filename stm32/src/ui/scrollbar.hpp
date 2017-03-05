@@ -32,7 +32,7 @@ namespace ui {
     virtual void redraw();
     virtual void mouseDown(uint8_t button, MouseState mousestate);
     virtual void mouseUp(uint8_t button, MouseState mousestate);
-    virtual void mouseMove(int16_t dx, int16_t dy, MouseState mousestate);
+    void mouseMove(int16_t /*dx*/, int16_t /*dy*/, MouseState mousestate);
     sigc::signal<void,unsigned> &onChanged() { return m_onChanged; }
   };
 }

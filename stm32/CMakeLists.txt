@@ -61,6 +61,7 @@ set(TESTER_CSRCS
 set(MAIN_CSRCS
   src/main.cpp
   src/timer.cpp
+  src/eventlogger.cpp
   src/fpga/fpga_comm.cpp
   src/fpga/sprite.cpp
   src/fpga/font.c
@@ -78,6 +79,7 @@ set(MAIN_CSRCS
   src/usb/usb.cpp
   src/usb/usbchannel.cpp
   src/usb/usbdevice.cpp
+  src/usb/usbhub.cpp
   src/lang.cpp
   src/input/usbhid.cpp
   src/input/input.cpp
@@ -96,6 +98,7 @@ set(MAIN_CSRCS
   src/ui/listbox.cpp
   src/ui/fileselect.cpp
   src/ui/icons.cpp
+  src/ui/settings.cpp
   src/bsp/system_stm32f4xx.c
   #  src/bsp/stm32f4xx_crc.c
   #  src/bsp/stm32f4xx_dbgmcu.c

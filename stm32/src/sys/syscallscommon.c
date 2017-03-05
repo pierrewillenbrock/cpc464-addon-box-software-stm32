@@ -32,6 +32,7 @@ void * _sbrk_r(
 	struct _reent *_s_r,
 	ptrdiff_t nbytes)
 {
+	(void)_s_r;
         char  *base;            /*  errno should be set to  ENOMEM on error     */
 
         if (!heap_ptr) {        /*  Initialize if first time through.           */
@@ -50,26 +51,31 @@ void * _sbrk_r(
 
 int _isatty_r(struct _reent *ptr, int file)
 {
+	(void)ptr;(void)file;
         return 0;
 }
 
 
 int _getpid_r ( struct _reent *ptr )
 {
+	(void)ptr;
 	return 1;/* this is the only process and its pid is 1. */
 }
 
 int _kill_r ( struct _reent *ptr, int a, int b )
 {
+	(void)ptr;(void)a;(void)b;
 	errno = EPERM;
 	return -1;
 }
 
 void _exit_r (int n) {
+	(void)n;
 label:  goto label; /* endless loop */
 }
 
 void _exit (int n) {
+	(void)n;
 label:  goto label; /* endless loop */
 }
 
@@ -83,10 +89,12 @@ label:  goto label; /* endless loop */
 static int __malloc_lock_irqsave;
 
 void __malloc_lock(struct _reent *r) {
+	(void)r;
 	ISR_Disable(__malloc_lock_irqsave);
 }
 
 void __malloc_unlock(struct _reent *r) {
+	(void)r;
 	ISR_Enable(__malloc_lock_irqsave);
 }
 

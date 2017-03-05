@@ -5,7 +5,10 @@
 extern "C" {
 #endif
 
+#include <sys/types.h>
+	
 typedef struct _DIR_struct {
+	char t;
 } DIR;
 
 struct dirent {

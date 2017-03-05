@@ -65,10 +65,10 @@ struct StdOutInode : public Inode {
 		mode = S_IFCHR | S_IWUSR | S_IWGRP | S_IWOTH |
 			S_IRUSR | S_IRGRP | S_IROTH;
 	}
-	virtual _ssize_t pread(void *ptr, size_t len, off_t offset) {
+	virtual _ssize_t pread(void */*ptr*/, size_t /*len*/, off_t /*offset*/) {
 		return 0;
 	}
-	virtual _ssize_t pwrite(const void *ptr, size_t len, off_t offset) {
+	virtual _ssize_t pwrite(const void *ptr, size_t len, off_t /*offset*/) {
 		//ignores offset
 		if (len > sizeof(stdout_buffer)) {
 			memcpy((void*)stdout_buffer,
@@ -89,10 +89,10 @@ struct NullInode : public Inode {
 		mode = S_IFCHR | S_IWUSR | S_IWGRP | S_IWOTH |
 			S_IRUSR | S_IRGRP | S_IROTH;
 	}
-	virtual _ssize_t pread(void *ptr, size_t len, off_t offset) {
+	virtual _ssize_t pread(void */*ptr*/, size_t /*len*/, off_t /*offset*/) {
 		return 0;
 	}
-	virtual _ssize_t pwrite(const void *ptr, size_t len, off_t offset) {
+	virtual _ssize_t pwrite(const void */*ptr*/, size_t len, off_t /*offset*/) {
 		return len;
 	}
 };
@@ -141,7 +141,7 @@ struct VFSDirInode : public Inode {
 		dent->inode = ino;
 		return 0;
 	}
-	virtual int create(RefPtr<Dentry> dent, mode_t mode) {
+	virtual int create(RefPtr<Dentry> /*dent*/, mode_t /*mode*/) {
 		//if we want to support files in memory, this is the place
 		//to implement them.
 		//if a file exists, and its inode is known at this point,
@@ -192,7 +192,7 @@ void VFS_Setup() {
 	mediaDentry->fully_populated = true;
 }
 
-_ssize_t _read_r(struct _reent *r, int file, void *ptr, size_t len) {
+_ssize_t _read_r(struct _reent */*r*/, int file, void *ptr, size_t len) {
 	RefPtr<File> fp;
 	{
 		ISR_Guard isrguard;
@@ -215,7 +215,7 @@ _ssize_t _read_r(struct _reent *r, int file, void *ptr, size_t len) {
 	return res;
 }
 
-_ssize_t _write_r (struct _reent *r, int file, const void *ptr, size_t len) {
+_ssize_t _write_r (struct _reent */*r*/, int file, const void *ptr, size_t len) {
 	RefPtr<File> fp;
 	{
 		ISR_Guard isrguard;
@@ -303,7 +303,7 @@ static RefPtr<Dentry> findDentry(const char *file) {
 	return dc;
 }
 
-int _open_r(struct _reent *r, const char *file, int flags, int mode ) {
+int _open_r(struct _reent */*r*/, const char *file, int flags, int mode ) {
 	RefPtr<Dentry> dc;
 	if (flags & O_CREAT) {
 		const char *basename;
@@ -355,7 +355,7 @@ int _open_r(struct _reent *r, const char *file, int flags, int mode ) {
 	return fd;
 }
 
-int _close_r(struct _reent *r, int file) {
+int _close_r(struct _reent */*r*/, int file) {
 	ISR_Guard isrguard;
 	if (file == -1 || (unsigned)file >= fds.size()) {
 		errno = EBADF;
@@ -371,7 +371,7 @@ int _close_r(struct _reent *r, int file) {
         return 0;
 }
 
-_off_t _lseek_r(struct _reent *r, int file, _off_t ptr, int dir) {
+_off_t _lseek_r(struct _reent */*r*/, int file, _off_t ptr, int dir) {
 	ISR_Guard isrguard;
 	if (file == -1 || (unsigned)file >= fds.size()) {
 		errno = EBADF;
@@ -406,7 +406,7 @@ _off_t _lseek_r(struct _reent *r, int file, _off_t ptr, int dir) {
 }
 
 
-int _fstat_r(struct _reent *r, int file, struct stat *st) {
+int _fstat_r(struct _reent */*r*/, int file, struct stat *st) {
 	ISR_Guard isrguard;
 	if (file == -1 || (unsigned)file >= fds.size()) {
 		errno = EBADF;
@@ -473,8 +473,6 @@ DIR *opendir (const char *name) {
 }
 
 struct dirent *readdir (DIR *__dirp) {
-	if (!__dirp)
-		return NULL;
 	RealDIR *dirp = (RealDIR*)__dirp;
 	struct dirent *dent = NULL;
 	if(dirp->dentstore.size() == 0) {
@@ -582,10 +580,6 @@ struct dirent *readdir (DIR *__dirp) {
 
 int closedir (DIR *__dirp) {
 	ISR_Guard isrguard;
-	if (!__dirp) {
-		errno = EFAULT;
-		return -1;
-	}
 	RealDIR *dirp = (RealDIR*)__dirp;
 	delete dirp;
 	return 0;

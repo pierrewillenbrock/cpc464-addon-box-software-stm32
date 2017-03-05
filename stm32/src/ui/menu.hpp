@@ -31,7 +31,7 @@ namespace ui {
     virtual Rect getGlobalRect();
     virtual void mouseDown(uint8_t button, MouseState mousestate);
     virtual void mouseUp(uint8_t button, MouseState mousestate);
-    virtual void mouseMove(int16_t dx, int16_t dy, MouseState mousestate);
+    virtual void mouseMove(int16_t /*dx*/, int16_t /*dy*/, MouseState mousestate);
     virtual unsigned int getItemCount() = 0;
     virtual std::string getItemText(unsigned int index) = 0;
     virtual void selectItem(int index) = 0;

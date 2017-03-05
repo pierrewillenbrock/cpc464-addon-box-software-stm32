@@ -1,7 +1,11 @@
 
 #pragma once
 
+#include <stdint.h>
+
+#ifndef PACKED
 #define PACKED __attribute__((packed))
+#endif
 
 struct USBDescriptorDevice {
 	uint8_t bLength;

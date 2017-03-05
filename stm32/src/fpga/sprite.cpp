@@ -40,7 +40,7 @@ struct BlockInfo {
 	uint8_t type;//0: does not exist, other data invalid. 1: unused. 2: used.
 };
 
-static std::array<BlockInfo,64> blocks = { (BlockInfo){ 0x780, 0xff, 1 }, (BlockInfo){ 0, 0, 0 } };
+static std::array<BlockInfo,64> blocks = { {(BlockInfo){ 0x780, 0xff, 1 }, (BlockInfo){ 0, 0, 0 }} };
 
 //if addr == ~0U, looks for space anywhere in the vmem
 //return ~0U if it could not find room.

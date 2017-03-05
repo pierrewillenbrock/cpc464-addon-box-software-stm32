@@ -5,6 +5,7 @@
 #include <fpga/sprite.hpp>
 #include "controls.hpp"
 #include "listbox.hpp"
+#include "input.hpp"
 #include "icons.hpp"
 
 #include <string>

@@ -21,6 +21,7 @@ namespace ui {
     virtual unsigned mapPitch() = 0;
     virtual void fullRedraw() = 0;
     virtual void updatedMap() = 0;
+    virtual bool isMapped() = 0;
     //this can and is expected to be the same as ui::Control::getGlobalRect
     virtual Control *getChildAt(Point p);
     void addChild(SubControl *ctl) {
@@ -65,6 +66,7 @@ namespace ui {
     bool visible() { return m_visible; }
     virtual Rect getRect();
     virtual Rect getGlobalRect();
+    virtual bool isMapped() { return m_visible; }
   };
 
   class SubControl : public virtual Control {
@@ -79,11 +81,13 @@ namespace ui {
     SubControl(Container *parent);
     void setPosition(unsigned x, unsigned y);
     void setSize(unsigned width, unsigned height);
-    void setVisible(bool visible);
+    virtual void setVisible(bool visible);
     bool visible() { return m_visible; }
     virtual void redraw() = 0;
     virtual Rect getRect();
     virtual Rect getGlobalRect();
+    virtual void unmapped() {}
+    virtual void mapped() {}
   };
 
   class Panel : public Container, public SubControl {
@@ -96,6 +100,10 @@ namespace ui {
     virtual void fullRedraw();
     virtual void updatedMap();
     virtual void redraw();
+    virtual void unmapped();
+    virtual void mapped();
+    virtual void setVisible(bool visible);
+    virtual bool isMapped() { return m_parent->isMapped() && m_visible; }
   };
 
   class Button : public SubControl {
@@ -113,22 +121,6 @@ namespace ui {
     virtual void mouseDown(uint8_t button, MouseState mousestate);
     virtual void mouseUp(uint8_t button, MouseState mousestate);
     sigc::signal<void> &onClick() { return m_onClick; }
-  };
-
-  class Input : public SubControl {
-  private:
-    std::string m_text;
-    unsigned m_scroll;
-    unsigned m_cursor;
-    bool m_focused;
-    sigc::signal<void,std::string> m_onChanged;
-  public:
-    Input(Container *parent);
-    ~Input();
-    void setText(std::string const &text);
-    std::string const &text() const { return m_text; }
-    virtual void redraw();
-    sigc::signal<void,std::string> &onChanged() { return m_onChanged; }
   };
 
   class Label : public SubControl {

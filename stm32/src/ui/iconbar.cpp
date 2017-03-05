@@ -4,6 +4,7 @@
 #include "hint.hpp"
 #include "menu.hpp"
 #include "fileselect.hpp"
+#include "settings.hpp"
 
 #include <fpga/sprite.hpp>
 #include <fpga/fpga_comm.h>
@@ -575,7 +576,6 @@ static uint32_t const settingsbr[] = { //uses palettes #8
 #define MAP(t, p) ((((t) & 0x7f) << 2) | ((p) << 17))
 static uint32_t iconbar_map[36];
 
-static Sprite iconbar_sprite;
 static uint16_t iconbar_mapbase;
 static uint8_t iconbar_tile_disktlno;
 static uint8_t iconbar_tile_disktrno;
@@ -651,21 +651,69 @@ public:
   void fileSelectCanceled();
 };
 
+class IconBar_SettingsMenu : public ui::Menu {
+public:
+  /*
+        > Display settings
+   */
+  unsigned int getItemCount() {
+    return 1;
+  }
+  std::string getItemText(unsigned int /*index*/) {
+    return "Display settings";
+  }
+  sigc::connection settingsClosedCon;
+  void selectItem(int index);
+  void settingsClosed();
+};
+
 static IconBar_DiskMenu iconbar_diskmenu;
+static IconBar_SettingsMenu iconbar_settingsmenu;
 
 class IconBar_Control : public ui::Control {
 private:
+  Sprite sprite;
   ui::Hint hint;
   int hintforicon;
   int press_iconno;
 public:
   IconBar_Control() : hintforicon(-1), press_iconno(-1) {}
+  void screenRectChange(ui::Rect const &r) {
+    struct sprite_info info = {
+      .hpos = (uint16_t)(r.x + r.width - 18*8),
+      .vpos = (uint16_t)(r.y + r.height - 2*8),
+      .map_addr = iconbar_mapbase,
+      .hsize = 18,
+      .vsize = 2,
+      .hpitch = 18,
+      .doublesize = 0
+    };
+    sprite.setSpriteInfo(info);
+  }
+  void init() {
+    struct sprite_info info = {
+      .hpos = (uint16_t)(ui::screen.rect().x + ui::screen.rect().width - 18*8),
+      .vpos = (uint16_t)(ui::screen.rect().y + ui::screen.rect().height - 2*8),
+      .map_addr = iconbar_mapbase,
+      .hsize = 18,
+      .vsize = 2,
+      .hpitch = 18,
+      .doublesize = 0
+    };
+    sprite.setSpriteInfo(info);
+    sprite.setZOrder(0);
+    sprite.setPriority(1);
+    sprite.setVisible(true);
+    ui::screen.onRectChange().connect
+      (sigc::mem_fun(this, &IconBar_Control::screenRectChange));
+  }
   virtual ui::Rect getRect() {
+    sprite_info const &info = sprite.info();
     ui::Rect r = {
-      .x = (uint16_t)(ui::screenRect().x + ui::screenRect().width - 18*8),
-      .y = (uint16_t)(ui::screenRect().y + ui::screenRect().height - 2*8),
-      .width = 18*8,
-      .height = 2*8
+      .x = info.hpos,
+      .y = info.vpos,
+      .width = (uint16_t)(info.hsize*8),
+      .height = (uint16_t)(info.vsize*8)
     };
     return r;
   }
@@ -698,11 +746,16 @@ public:
 	  iconbar_diskmenu.setVisible(true);
 	  UI_setTopLevelControl(&iconbar_diskmenu);
 	}
+	if (iconno == 8) {
+	  iconbar_settingsmenu.setPosition(ui::Point(mousestate.x,mousestate.y));
+	  iconbar_settingsmenu.setVisible(true);
+	  UI_setTopLevelControl(&iconbar_settingsmenu);
+	}
 	// do action
       }
     }
   }
-  virtual void mouseMove(int16_t dx, int16_t dy, ui::MouseState mousestate) {
+  virtual void mouseMove(int16_t /*dx*/, int16_t /*dy*/, ui::MouseState mousestate) {
     ui::Rect r = getGlobalRect();
     if (mousestate.x < r.x ||
 	mousestate.y < r.y ||
@@ -733,8 +786,8 @@ public:
       std::string text = ss.str();
       hint.setText(text);
       hint.setPosition(ui::Point
-		       (ui::screenRect().x + ui::screenRect().width - text.size()*8,
-			ui::screenRect().y + ui::screenRect().height - 3*8));
+		       (ui::screen.rect().x + ui::screen.rect().width - text.size()*8,
+			ui::screen.rect().y + ui::screen.rect().height - 3*8));
       hint.setVisible(true);
     }
   }
@@ -743,6 +796,7 @@ public:
 
 static IconBar_Control iconbar_control;
 static ui::FileSelect iconbar_fileselect;
+static ui::Settings iconbar_settings;
 
 static void IconBar_DeferredEjectDisk(unsigned drive) {
   FDC_EjectDisk(drive);
@@ -752,6 +806,13 @@ static void IconBar_DeferredEjectDisk(unsigned drive) {
 static void IconBar_DeferredOpenDisk(unsigned drive, std::string file) {
   FDC_EjectDisk(drive);
   FDC_InsertDisk(drive,file.c_str());
+  IconBar_disk_assigned(drive, file.c_str());
+}
+
+static void IconBar_DeferredCreateDisk(unsigned drive, std::string file) {
+  FDC_EjectDisk(drive);
+  //todo
+  //FDC_InsertDisk(drive,file.c_str());
   IconBar_disk_assigned(drive, file.c_str());
 }
 
@@ -804,6 +865,7 @@ void IconBar_DiskMenu::fileSelectedOpen(std::string file) {
 void IconBar_DiskMenu::fileSelectedCreate(std::string file) {
   iconbar_fileselect.setVisible(false);
   UI_setTopLevelControl(&iconbar_control);
+  addDeferredWork(sigc::bind(sigc::bind(sigc::ptr_fun(IconBar_DeferredCreateDisk),file),diskno));
   fileSelectedCon.disconnect();
   fileSelectCanceledCon.disconnect();
 }
@@ -813,6 +875,25 @@ void IconBar_DiskMenu::fileSelectCanceled() {
   UI_setTopLevelControl(&iconbar_control);
   fileSelectedCon.disconnect();
   fileSelectCanceledCon.disconnect();
+}
+
+void IconBar_SettingsMenu::selectItem(int index) {
+  if (index == -1) { // menu was dismissed, do nothing
+    iconbar_settingsmenu.setVisible(false);
+    UI_setTopLevelControl(&iconbar_control);
+  }
+  if (index == 0) { // insert disk.
+    iconbar_settingsmenu.setVisible(false);
+    iconbar_settings.setVisible(true);
+    settingsClosedCon = iconbar_settings.onClose().connect(sigc::mem_fun(this, &IconBar_SettingsMenu::settingsClosed));
+    UI_setTopLevelControl(&iconbar_settings);
+  }
+}
+
+void IconBar_SettingsMenu::settingsClosed() {
+  iconbar_settings.setVisible(false);
+  UI_setTopLevelControl(&iconbar_control);
+  settingsClosedCon.disconnect();
 }
 
 static void iconbar_upload_tile(unsigned no, uint32_t const *data) {
@@ -1048,22 +1129,9 @@ void IconBar_Setup() {
 
   FPGAComm_CopyToFPGA(FPGA_GRPH_SPRITES_RAM+iconbar_mapbase*4, iconbar_map, sizeof(iconbar_map));
 
-  struct sprite_info info = {
-    .hpos = (uint16_t)(ui::screenRect().x + ui::screenRect().width - 18*8),
-    .vpos = (uint16_t)(ui::screenRect().y + ui::screenRect().height - 2*8),
-    .map_addr = iconbar_mapbase,
-    .hsize = 18,
-    .vsize = 2,
-    .hpitch = 18,
-    .doublesize = 0
-  };
-  iconbar_sprite.setSpriteInfo(info);
-  iconbar_sprite.setZOrder(0);
-  iconbar_sprite.setPriority(1);
-  iconbar_sprite.setVisible(true);
-
   iconbar_fileselect.setFolder("/media");
 
+  iconbar_control.init();
   UI_setTopLevelControl(&iconbar_control);
 }
 

@@ -65,8 +65,8 @@ FileSelect::FileSelect()
   //if invisible.
   unsigned w = 40;
   unsigned h = 24;
-  setPosition(Point(screenRect().x + (screenRect().width - w*8)/2,
-		    screenRect().y + (screenRect().height - h*8)/2));
+  setPosition(Point(screen.rect().x + (screen.rect().width - w*8)/2,
+		    screen.rect().y + (screen.rect().height - h*8)/2));
   setSize(w,h);
   m_folder_label.setPosition(0,0);
   m_folder_label.setSize(9,1);
@@ -254,6 +254,11 @@ void FileSelect::setFolder(std::string const &folder) {
 void FileSelect::setVisible(bool visible) {
   Frame::setVisible(visible);
   if (visible) {
+    unsigned w = 40;
+    unsigned h = 24;
+    setPosition(Point(screen.rect().x + (screen.rect().width - w*8)/2,
+		      screen.rect().y + (screen.rect().height - h*8)/2));
+    setSize(w,h);
     m_newDir.setIcon(icons.getIcon(Icons::NewFolder));
     ISR_Guard g;
     m_names.clearItems();

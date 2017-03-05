@@ -94,11 +94,11 @@ void ListBox::redraw() {
 	  map[r * mappitch + x] = font_get_tile(' ',11, 1);
       }
       if (x+1 + it.text.size() > 0) {
-	for(unsigned int i = 0; i < it.text.size(); i++) {
+	for(int i = 0; i < (int)it.text.size(); i++) {
 	  if (x+i+1 >= 0 && x+i+1 < m_width)
 	    map[r * mappitch + x+i+1] = font_get_tile(it.text[i],pal, 1);
 	}
-	for(unsigned int i = it.text.size()+1; i < w; i++) {
+	for(int i = it.text.size()+1; i < (int)w; i++) {
 	  if (x+i >= 0 && x+i < m_width)
 	    map[r * mappitch + x+i] = font_get_tile(' ',11, 1);
 	}
@@ -106,7 +106,7 @@ void ListBox::redraw() {
     }
     if (rows > m_items.size()-c*rows) {
       for(unsigned r = m_items.size()-c*rows; r < rows; r++) {
-	for(unsigned int i = 0; i < w; i++) {
+	for(int i = 0; i < (int)w; i++) {
 	  if (x+i >= 0 && x+i < m_width)
 	    map[r * mappitch + x+i] = font_get_tile(' ',11, 1);
 	}
@@ -152,7 +152,7 @@ int ListBox::itemAt(unsigned px, unsigned py) {
   return -1;
 }
 
-void ListBox::scrollChanged(unsigned position) {
+void ListBox::scrollChanged(unsigned /*position*/) {
   redraw();
 }
 

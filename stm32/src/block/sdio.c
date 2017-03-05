@@ -429,6 +429,7 @@ void DMA2_Stream3_IRQHandler() {
 }
 
 static void SDIO_timeout(void *unused) {
+	(void)unused;
 	struct SDCommand *c = current_command;
 	current_command = NULL;
 	timer_handle = 0;

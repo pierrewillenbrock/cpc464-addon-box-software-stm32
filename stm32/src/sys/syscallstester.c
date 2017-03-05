@@ -8,6 +8,7 @@ void MPROT_Setup() {}
 
 _ssize_t _read_r(struct _reent *r, int file, void *ptr, size_t len)
 {
+	(void)r;(void)file;(void)ptr;(void)len;
 	return -1;
 }
 
@@ -19,6 +20,7 @@ _ssize_t _write_r (
 	const void *ptr,
 	size_t len)
 {
+	(void)r;(void)file;
 	if (len > sizeof(stdout_buffer)) {
 		memcpy((void*)stdout_buffer,
 		       ((char*)ptr)+len-sizeof(stdout_buffer),
@@ -35,6 +37,7 @@ _ssize_t _write_r (
 int _open_r(struct _reent *r,
 	    const char *file, int flags, int mode )
 {
+	(void)file;(void)flags;(void)mode;
 	//we could implement a filesystem here. fd #0, 1, 2 are fixed and will not
 	//be opened
 	r->_errno = ENODEV;
@@ -45,6 +48,7 @@ int _close_r(
 	struct _reent *r,
 	int file)
 {
+	(void)r;(void)file;
         return 0;
 }
 
@@ -54,6 +58,7 @@ _off_t _lseek_r(
 	_off_t ptr,
 	int dir)
 {
+	(void)r;(void)file;(void)ptr;(void)dir;
         return (_off_t)0;       /*  Always indicate we are at file beginning.   */
 }
 
@@ -63,6 +68,7 @@ int _fstat_r(
 	int file,
 	struct stat *st)
 {
+	(void)r;(void)file;
         /*  Always set as character device.                             */
         st->st_mode = 0;/* don't set S_IFCHR, else newlib tries to test for
                            tty using isatty (not _isatty_r) */

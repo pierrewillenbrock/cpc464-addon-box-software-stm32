@@ -1448,7 +1448,7 @@ typedef struct OTG_Core_TypeDef
   __IO uint32_t HNPTXFSIZ;/*!< OTG nonperiodic transmit fifo size register,         Address offset: 0x028 */
   __IO uint32_t DIEPTXF0; /*!< OTG Endpoint 0 transmit fifo size register,          Address offset: 0x028 */
   };
-  __IO uint32_t GNPTXSTS; /*!< OTG nonperiodic transmit fifo/queue status register, Address offset: 0x02C */
+  __IO uint32_t HNPTXSTS; /*!< OTG nonperiodic transmit fifo/queue status register, Address offset: 0x02C */
   __IO uint32_t GI2CCTL;  /*!< OTG I²C access register,                             Address offset: 0x030 */
        uint32_t RESERVED0; /*!< Reserved, 0x034                                                           */
   __IO uint32_t GCCFG;    /*!< OTG general core configuration register,             Address offset: 0x038 */

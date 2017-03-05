@@ -13,19 +13,19 @@ struct Inode : public Refcounted<Inode> {
 	off_t size;
 	Inode() : mode(0), size(0) {}
 	virtual ~Inode() {}
-	virtual _ssize_t pread(void *ptr, size_t len, off_t offset) {
+	virtual _ssize_t pread(void */*ptr*/, size_t /*len*/, off_t /*offset*/) {
 		errno = EINVAL;
 		return -1;
 	}
-	virtual _ssize_t pwrite(const void *ptr, size_t len, off_t offset) {
+	virtual _ssize_t pwrite(const void */*ptr*/, size_t /*len*/, off_t /*offset*/) {
 		errno = EINVAL;
 		return -1;
 	}
-	virtual _ssize_t pread_nb(PReadCommand * command) {
+	virtual _ssize_t pread_nb(PReadCommand * /*command*/) {
 		errno = EINVAL;
 		return -1;
 	}
-	virtual _ssize_t pwrite_nb(PWriteCommand * command) {
+	virtual _ssize_t pwrite_nb(PWriteCommand * /*command*/) {
 		errno = EINVAL;
 		return -1;
 	}
@@ -35,24 +35,24 @@ struct Inode : public Refcounted<Inode> {
 		st->st_size = size;
 		return 0;
 	}
-	virtual int mkdir(RefPtr<Dentry> dent, mode_t mode) {
+	virtual int mkdir(RefPtr<Dentry> /*dent*/, mode_t /*mode*/) {
 		errno = ENOTDIR;
 		return -1;
 	}
-	virtual int lookup(RefPtr<Dentry> dent) {
+	virtual int lookup(RefPtr<Dentry> /*dent*/) {
 		errno = ENOTDIR;
 		return -1;
 	}
-	virtual int mknod(RefPtr<Dentry> dent, mode_t mode,
-			  RefPtr<Inode> ino) {
+	virtual int mknod(RefPtr<Dentry> /*dent*/, mode_t /*mode*/,
+			  RefPtr<Inode> /*ino*/) {
 		errno = ENOTDIR;
 		return -1;
 	}
-	virtual int create(RefPtr<Dentry> dent, mode_t mode) {
+	virtual int create(RefPtr<Dentry> /*dent*/, mode_t /*mode*/) {
 		errno = ENOTDIR;
 		return -1;
 	}
-	virtual bool readdir(off_t &d_off, std::string &name) {
+	virtual bool readdir(off_t &/*d_off*/, std::string &/*name*/) {
 		return false;
 	}
 };

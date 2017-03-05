@@ -1,11 +1,7 @@
 
 #pragma once
 
-#include <stdint.h>
-
-#ifndef PACKED
-#define PACKED __attribute__((packed))
-#endif
+#include <usbproto/usb.h> //for PACKED, stdint
 
 struct USBHIDDescriptorHID {
 	uint8_t bLength;

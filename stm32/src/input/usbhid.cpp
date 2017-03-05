@@ -9,7 +9,7 @@
 #include <bits.h>
 #include <input/input.hpp>
 
-#include "usbhidproto.h"
+#include <usbproto/hid.h>
 
 namespace usbhid {
 
@@ -143,26 +143,11 @@ namespace usbhid {
 		std::vector<InOut*> inputs;
 		std::vector<InOut*> outputs;
 		std::vector<InOut*> features;
-		//the collection owns its InOut elements
 		void clear() {
-			for(auto &i : inputs)
-				delete i;
-			for(auto &o : outputs)
-				delete o;
-			for(auto &f : features)
-				delete f;
 			collections.clear();
 			inputs.clear();
 			outputs.clear();
 			features.clear();
-		}
-		~Collection() {
-			for(auto &i : inputs)
-				delete i;
-			for(auto &o : outputs)
-				delete o;
-			for(auto &f : features)
-				delete f;
 		}
 	};
 
@@ -203,7 +188,7 @@ private:
 	uint8_t input_polling_interval;
 	void ctlurbCompletion(int result, URB *u);
 	static void _ctlurbCompletion(int result, URB *u);
-	void irqurbCompletion(int result, URB *u);
+	void irqurbCompletion(int result, URB */*u*/);
 	static void _irqurbCompletion(int result, URB *u);
 	void parseReportDescriptor(uint8_t *data, size_t size);
 
@@ -220,9 +205,11 @@ public:
 		{}
 	~USBHIDDev() {
 		Input_deviceRemove(this);
+		for(auto &i : inouts)
+			delete i;
 	}
 	virtual void interfaceClaimed(uint8_t interfaceNumber, uint8_t alternateSetting);
-	virtual void disconnected(RefPtr<USBDevice> device);
+	virtual void disconnected(RefPtr<USBDevice> /*device*/);
 	virtual InputControlInfo getControlInfo(uint16_t control_info_index);
 };
 
@@ -286,6 +273,8 @@ void USBHIDDev::parseReportDescriptor(uint8_t *data, size_t size) {
 	inputreports.clear();
 	outputreports.clear();
 	featurereports.clear();
+	for(auto &i : inouts)
+		delete i;
 	inouts.clear();
 
 
@@ -597,7 +586,7 @@ void USBHIDDev::_ctlurbCompletion(int result, URB *u) {
 	du->_this->ctlurbCompletion(result, u);
 }
 
-void USBHIDDev::irqurbCompletion(int result, URB *u) {
+void USBHIDDev::irqurbCompletion(int result, URB */*u*/) {
 	//this is called repeatedly by the usb subsystem.
 	if (result != 0)
 		return;
@@ -1089,7 +1078,7 @@ c0
 	 */
 }
 
-void USBHIDDev::disconnected(RefPtr<USBDevice> device) {
+void USBHIDDev::disconnected(RefPtr<USBDevice> /*device*/) {
 	ctlurb.u.endpoint = NULL;
 	USB_retireURB(&irqurb.u);
 	irqurb.u.endpoint = NULL;

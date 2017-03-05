@@ -59,7 +59,7 @@ static uint8_t driveAccessCount[4] = {0,0,0,0};
 
 static RefPtr<Disk> images[4];
 
-static void driveStatusCompletion(int result, struct FPGAComm_Command *unused) {
+static void driveStatusCompletion(int result, struct FPGAComm_Command */*unused*/) {
 	driveStatusState = 0;
 	if (result != 0) {
 		return;
@@ -74,7 +74,7 @@ static void driveStatusCompletion(int result, struct FPGAComm_Command *unused) {
 	}
 }
 
-static void driveStatusTimer(void *unused) {
+static void driveStatusTimer(void */*unused*/) {
 	for(unsigned i = 0; i < 4; i++) {
 		if (driveAccessCount[i] > 0) {
 			driveAccessCount[i]--;
@@ -137,7 +137,7 @@ static void fdcirq_FPGACommCompletion(int result,
     clears irq.
 */
 static void fdcirq_DiskFindSectorCompletion(RefPtr<DiskSector> sector,
-					   DiskFindSectorCommand *command) {
+					   DiskFindSectorCommand */*command*/) {
 	driveAccessCount[fdcirq_command.driveUnit] = 10;
 	switch (fdcirq_state) {
 	case SECTOR_FETCH:
@@ -244,10 +244,10 @@ static void fdcirq_DiskFindSectorCompletion(RefPtr<DiskSector> sector,
 }
 
 static void fdcirq_FPGACommCompletion(int result,
-				      struct FPGAComm_Command *unused) {
+				      struct FPGAComm_Command *command) {
 	if (result != 0) {
 		//this is bad. retry.
-		FPGAComm_ReadWriteCommand(&fdcirq_FPGACommand);
+		FPGAComm_ReadWriteCommand(command);
 		return;
 	}
 	driveAccessCount[fdcirq_command.driveUnit] = 10;
@@ -385,7 +385,7 @@ static void fdcirq_FPGACommCompletion(int result,
 	}
 }
 
-static void FDC_IRQHandler(void *unused) {
+static void FDC_IRQHandler(void */*unused*/) {
 	switch(fdcirq_state) {
 	case IDLE:
 		//first, queue the disable command so we can retrigger the irq when we reenable and it is asserted again already.

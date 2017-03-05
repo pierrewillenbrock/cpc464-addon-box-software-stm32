@@ -2,28 +2,29 @@
 #include <new>
 #include <malloc.h>
 #include <assert.h>
+#include <sys/types.h>
 
-void* operator new(std::size_t size) {
+void* operator new(std::size_t size) _GLIBCXX_THROW (std::bad_alloc) {
   void *o = malloc(size);
   assert(o);
   while (!o) {}
   return o;
 }
 
-void* operator new[](std::size_t size) {
+void* operator new[](std::size_t size) _GLIBCXX_THROW (std::bad_alloc) {
   void *o = malloc(size);
   assert(o);
   while (!o) {}
   return o;
 }
 
-void operator delete(void* ptr) {
+void operator delete(void* ptr) _GLIBCXX_USE_NOEXCEPT {
   if (!ptr)
     return;
   free(ptr);
 }
 
-void operator delete[](void* ptr) {
+void operator delete[](void* ptr) _GLIBCXX_USE_NOEXCEPT {
   if (!ptr)
     return;
   free(ptr);
@@ -35,27 +36,27 @@ void operator delete[](void* ptr) {
    rather than just eliminate exceptions.
 */
 
-void* operator new(std::size_t size, const std::nothrow_t&) {
+void* operator new(std::size_t size, const std::nothrow_t&) _GLIBCXX_USE_NOEXCEPT {
   void *o = malloc(size);
   assert(o);
   while (!o) {}
   return o;
 }
 
-void* operator new[](std::size_t size, const std::nothrow_t&) {
+void* operator new[](std::size_t size, const std::nothrow_t&) _GLIBCXX_USE_NOEXCEPT {
   void *o = malloc(size);
   assert(o);
   while (!o) {}
   return o;
 }
 
-void operator delete(void* ptr, const std::nothrow_t&) {
+void operator delete(void* ptr, const std::nothrow_t&) _GLIBCXX_USE_NOEXCEPT {
   if (!ptr)
     return;
   free(ptr);
 }
 
-void operator delete[](void* ptr, const std::nothrow_t&) {
+void operator delete[](void* ptr, const std::nothrow_t&) _GLIBCXX_USE_NOEXCEPT {
   if (!ptr)
     return;
   free(ptr);

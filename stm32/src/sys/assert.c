@@ -29,7 +29,7 @@ void __assert_func(const char *file, int line, const char *func, const char * ex
 	__disable_irq();
 	assert_error_file = file;
 	assert_error_line = line;
-	assert_error_func = file;
+	assert_error_func = func;
 	assert_error_expr = expr;
 
 	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);
@@ -65,27 +65,35 @@ void NMI_Handler(void)
 	assert_failed((uint8_t *)__FILE__, __LINE__);
 }
 
-#pragma GCC push_options
-#pragma GCC optimize ("O0")
 static SCB_Type * scb = SCB;
+static void FatalExceptionHandler(struct ARMv7M_FPUExceptionFrame * fp) {
+	assert_failed((uint8_t *)__FILE__, __LINE__);
+}
+
 void HardFault_Handler(void) __attribute__((naked));
 void HardFault_Handler(void)
 {
-	struct ARMv7M_FPUExceptionFrame * fp;
-	asm volatile ("mov %0, sp"
-	    : "=r" (fp)
+	__ASM volatile ("mov r0, sp"
+		"\n\tbl %0"
+		: : "g"(FatalExceptionHandler) : "r0"
 		);
-	assert_failed((uint8_t *)__FILE__, __LINE__);
 }
-#pragma GCC pop_options
 
+void BusFault_Handler(void) __attribute__((naked));
 void BusFault_Handler(void)
 {
-	assert_failed((uint8_t *)__FILE__, __LINE__);
+	__ASM volatile ("mov r0, sp"
+		"\n\tbl %0"
+		: : "g"(FatalExceptionHandler) : "r0"
+		);
 }
 
+void UsageFault_Handler(void) __attribute__((naked));
 void UsageFault_Handler(void)
 {
-	assert_failed((uint8_t *)__FILE__, __LINE__);
+	__ASM volatile ("mov r0, sp"
+		"\n\tbl %0"
+		: : "g"(FatalExceptionHandler) : "r0"
+		);
 }
 

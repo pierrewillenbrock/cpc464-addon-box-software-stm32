@@ -6,7 +6,7 @@
 #include <array>
 
 namespace ui {
-	struct Icon {
+	class Icon {
 	private:
 		void allocate() const;
 		void deallocate() const;
@@ -41,7 +41,7 @@ namespace ui {
 				for (auto &a : assigned) a = 0xff;
 			}
 		};
-		std::array<Icon,3> m_icons;
+		std::array<Icon,4> m_icons;
 		std::array<IconTile,1> m_icontiles;
 		void allocateIcon(Icon const *icon);
 		void deallocateIcon(Icon const *icon);
@@ -51,7 +51,7 @@ namespace ui {
 	public:
 		Icons();
 		enum IconName {
-			Folder=0, File, NewFolder
+			Folder=0, File, NewFolder, UpDown
 		};
 		RefPtr<Icon const> getIcon(IconName name);
 	};

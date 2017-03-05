@@ -45,12 +45,25 @@ namespace ui {
   6 ########  ######
   7             ##
 
+   Up Down:
+    0 1 2 3 4 5 6 7
+  0       ##
+  1     ######    
+  2   ##########  
+  3       ##      
+  4   ##########
+  5     ######    
+  6       ##        
+  7               
+
+
  */
 
 uint8_t const iconmap[][8] = {
   { 0xf0, 0xfe, 0xfe, 0xe2, 0x82, 0x82, 0xfe, 0x00 },
   { 0x78, 0x4c, 0x4e, 0x42, 0x42, 0x42, 0x7e, 0x00 },
   { 0xf0, 0xfe, 0xfe, 0xe2, 0x80, 0x82, 0xf7, 0x02 },
+  { 0x10, 0x38, 0x7c, 0x10, 0x7c, 0x38, 0x10, 0x00 },
 };
 
 void Icon::allocate() const {
@@ -113,6 +126,10 @@ void Icons::deallocateIcon(Icon const *icon) {
 }
 
 void Icons::_fpgacmpl(int result, FPGAComm_Command *command) {
+  if (result != 0) {
+    FPGAComm_ReadWriteCommand(command);
+    return;
+  }
   icons.uploading = 0xff;
   icons.checkTiles();
 }
