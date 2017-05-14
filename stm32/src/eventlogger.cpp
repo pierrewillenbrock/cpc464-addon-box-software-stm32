@@ -6,14 +6,14 @@
 
 struct LogInfo {
   const char *info;
-  std::vector<char> extra;
   uint64_t timestamp;
+  void *extra;
 };
 
 std::array<LogInfo,512> eventlog;
 unsigned int eventlogpos = 0;
 
-void LogEvent(const char *info, std::vector<char> const &extra) {
+void LogEvent(const char *info, void *extra) {
   unsigned pos;
   {
     ISR_Guard g;
@@ -29,5 +29,5 @@ void LogEvent(const char *info, std::vector<char> const &extra) {
 }
 
 void LogEvent(const char *info) {
-  LogEvent(info, std::vector<char>());
+  LogEvent(info, NULL);
 }
