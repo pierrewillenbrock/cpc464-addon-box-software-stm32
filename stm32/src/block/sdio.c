@@ -13,43 +13,11 @@
 #include <irq.h>
 #include <timer.h>
 
-//hardware definitions
-
-#define SD_CLK_PIN GPIO_Pin_12
-#define SD_CLK_GPIO GPIOC
-#define SD_PINS1 (GPIO_Pin_8 | GPIO_Pin_9 | GPIO_Pin_10 | GPIO_Pin_11)
-#define SD_GPIO1 GPIOC
-#define SD_PINS2 (GPIO_Pin_2)
-#define SD_GPIO2 GPIOD
-
-#define SD_GPIO_RCC (RCC_AHB1Periph_GPIOA | RCC_AHB1Periph_GPIOB | RCC_AHB1Periph_GPIOC | RCC_AHB1Periph_GPIOD)
-
-// SD standard defintions
-#define SD_CS_ADDR_OUT_OF_RANGE        ((uint32_t)0x80000000U)
-#define SD_CS_ADDR_MISALIGNED          ((uint32_t)0x40000000U)
-#define SD_CS_BLOCK_LEN_ERR            ((uint32_t)0x20000000U)
-#define SD_CS_ERASE_SEQ_ERR            ((uint32_t)0x10000000U)
-#define SD_CS_BAD_ERASE_PARAM          ((uint32_t)0x08000000U)
-#define SD_CS_WRITE_PROT_VIOLATION     ((uint32_t)0x04000000U)
-#define SD_CS_LOCK_UNLOCK_FAILED       ((uint32_t)0x01000000U)
-#define SD_CS_COM_CRC_FAILED           ((uint32_t)0x00800000U)
-#define SD_CS_ILLEGAL_CMD              ((uint32_t)0x00400000U)
-#define SD_CS_CARD_ECC_FAILED          ((uint32_t)0x00200000U)
-#define SD_CS_CC_ERROR                 ((uint32_t)0x00100000U)
-#define SD_CS_GENERAL_UNKNOWN_ERROR    ((uint32_t)0x00080000U)
-#define SD_CS_STREAM_READ_UNDERRUN     ((uint32_t)0x00040000U)
-#define SD_CS_STREAM_WRITE_OVERRUN     ((uint32_t)0x00020000U)
-#define SD_CS_CID_CSD_OVERWRITE        ((uint32_t)0x00010000U)
-#define SD_CS_WP_ERASE_SKIP            ((uint32_t)0x00008000U)
-#define SD_CS_CARD_ECC_DISABLED        ((uint32_t)0x00004000U)
-#define SD_CS_ERASE_RESET              ((uint32_t)0x00002000U)
-#define SD_CS_AKE_SEQ_ERROR            ((uint32_t)0x00000008U)
-//#define SD_CS_ERRORBITS                ((uint32_t)0xFDFFE008U)
-#define SD_CS_ERRORBITS                ((uint32_t)0xFD7FE008U)
-
-
 static uint32_t timer_handle = 0;
 static struct SDCommand * volatile current_command = NULL;
+#include "sdcard_std.h"
+#include <hw/sd.h>
+
 
 #ifdef SDIO_DEBUG
 struct SDDebug {
@@ -69,7 +37,7 @@ int sd_nextdebug = 0;
 	sd_debug[sd_nextdebug].STA = SDIO->STA;	\
 	sd_nextdebug++;				\
 	sd_nextdebug &= SD_DEBUG_COUNT-1;	\
-	while(0)
+} while(0)
 #else
 #define SD_DEBUG_SAMPLE(res, cmdp) (void)0
 #endif

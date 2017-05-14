@@ -14,56 +14,8 @@
 #include <block/sdio.h>
 #include <deque>
 
-//hardware definitions
-
-#define SD_PWR_PIN GPIO_Pin_8
-#define SD_PWR_GPIO GPIOA
-#define SD_CD_PIN GPIO_Pin_5
-#define SD_CD_GPIO GPIOB
-#define SD_CD_EXTI_Line EXTI_Line5
-#define SD_CD_EXTI_PortSourceGPIO EXTI_PortSourceGPIOB
-#define SD_CD_EXTI_PinSource EXTI_PinSource5
-#define SD_PINS1 (GPIO_Pin_8 | GPIO_Pin_9 | GPIO_Pin_10 | GPIO_Pin_11 | GPIO_Pin_12)
-#define SD_GPIO1 GPIOC
-#define SD_PINS2 (GPIO_Pin_2)
-#define SD_GPIO2 GPIOD
-
-#define SD_GPIO_RCC (RCC_AHB1Periph_GPIOA | RCC_AHB1Periph_GPIOB | RCC_AHB1Periph_GPIOC | RCC_AHB1Periph_GPIOD)
-
-
-
-// SD standard defintions
-
-#define SD_R6_GENERAL_UNKNOWN_ERROR     ((uint32_t)0x00002000U)
-#define SD_R6_ILLEGAL_CMD               ((uint32_t)0x00004000U)
-#define SD_R6_COM_CRC_FAILED            ((uint32_t)0x00008000U)
-
-//voltage window is 3.2-3.3. could try some different values as well.
-//3.2-3.4(for +/-5%) is one option, could also try 3.0-3.6 (for +/-10%)
-//would be 0x00300000 resp 0x00780000
-#define SD_VOLTAGE_WINDOW_SD            ((uint32_t)0x00100000U)
-#define SD_HIGH_CAPACITY                ((uint32_t)0x40000000U)
-
-#define SD_CS_ADDR_OUT_OF_RANGE        ((uint32_t)0x80000000U)
-#define SD_CS_ADDR_MISALIGNED          ((uint32_t)0x40000000U)
-#define SD_CS_BLOCK_LEN_ERR            ((uint32_t)0x20000000U)
-#define SD_CS_ERASE_SEQ_ERR            ((uint32_t)0x10000000U)
-#define SD_CS_BAD_ERASE_PARAM          ((uint32_t)0x08000000U)
-#define SD_CS_WRITE_PROT_VIOLATION     ((uint32_t)0x04000000U)
-#define SD_CS_LOCK_UNLOCK_FAILED       ((uint32_t)0x01000000U)
-#define SD_CS_COM_CRC_FAILED           ((uint32_t)0x00800000U)
-#define SD_CS_ILLEGAL_CMD              ((uint32_t)0x00400000U)
-#define SD_CS_CARD_ECC_FAILED          ((uint32_t)0x00200000U)
-#define SD_CS_CC_ERROR                 ((uint32_t)0x00100000U)
-#define SD_CS_GENERAL_UNKNOWN_ERROR    ((uint32_t)0x00080000U)
-#define SD_CS_STREAM_READ_UNDERRUN     ((uint32_t)0x00040000U)
-#define SD_CS_STREAM_WRITE_OVERRUN     ((uint32_t)0x00020000U)
-#define SD_CS_CID_CSD_OVERWRITE        ((uint32_t)0x00010000U)
-#define SD_CS_WP_ERASE_SKIP            ((uint32_t)0x00008000U)
-#define SD_CS_CARD_ECC_DISABLED        ((uint32_t)0x00004000U)
-#define SD_CS_ERASE_RESET              ((uint32_t)0x00002000U)
-#define SD_CS_AKE_SEQ_ERROR            ((uint32_t)0x00000008U)
-#define SD_CS_ERRORBITS                ((uint32_t)0xFDFFE008U)
+#include "sdcard_std.h"
+#include <hw/sd.h>
 
 int card_present = 0;
 static uint32_t timer_handle = 0;
@@ -175,7 +127,7 @@ static int card_khz;
 void SDcard_Setup() {
 	SDIO_Setup();
 
-	RCC_AHB1PeriphClockCmd(SD_GPIO_RCC, ENABLE);
+	RCC_AHB1PeriphClockCmd(SD_PWR_CD_GPIO_RCC, ENABLE);
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_SYSCFG, ENABLE);
 
 	GPIO_InitTypeDef gpio_init;
