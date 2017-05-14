@@ -29,6 +29,7 @@ private:
 public:
 	Refcounted() : refcount(0) {}
 	virtual ~Refcounted() { assert(refcount == 0); }
+	void refIsStatic() { refcount = 0x80000000UL; }
 };
 
 template <class RO>
