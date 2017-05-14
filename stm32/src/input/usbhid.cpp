@@ -273,7 +273,7 @@ public:
 		: device(device)
 		{}
 	~USBHIDDev() {
-		Input_deviceRemove(this);
+		deviceRemove();
 #ifdef SUPPORT_INPUTS
 		for(auto &r : inputreports)
 			delete r;
@@ -998,7 +998,7 @@ void USBHIDDev::setValues(InOut *inout, std::vector<int32_t> &values) {
 				continue;//did not change
 			hir.usage = inout->usages[0].getUsage(i);
 			hir.value = values[i];
-			Input_reportInput(hir);
+			reportInput(hir);
 		}
 	} else {
 		//check if we can find the valid last_values
@@ -1019,7 +1019,7 @@ void USBHIDDev::setValues(InOut *inout, std::vector<int32_t> &values) {
 					(lv-inout->logical_minimum);
 				hir.value = 0;
 				hir.control_info_index = inout->control_info_index;
-				Input_reportInput(hir);
+				reportInput(hir);
 			}
 		}
 		//now look for the inverse:
@@ -1038,7 +1038,7 @@ void USBHIDDev::setValues(InOut *inout, std::vector<int32_t> &values) {
 				hir.usage = inout->usages[0].getUsage
 					(v-inout->logical_minimum);
 				hir.value = 1;
-				Input_reportInput(hir);
+				reportInput(hir);
 			}
 		}
 	}

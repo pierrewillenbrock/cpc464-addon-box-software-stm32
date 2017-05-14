@@ -20,11 +20,18 @@ public:
 	uint8_t sprite_tile_base;
 	uint16_t sprite_map_base;
 	virtual void inputReport(InputReport const &rep);
-	MouseInput()
+	   MouseInput()
 		: x(ui::screen.rect().width*mouse_scale/2)
 		, y(ui::screen.rect().height*mouse_scale/2)
 		{}
 };
+
+class MouseDevInput : public InputDevListener {
+public:
+	virtual void inputDeviceAdd(InputDev *dev);
+};
+
+
 
 void MouseInput::inputReport(InputReport const &rep) {
 	if ((rep.flags & 1) && rep.usage == 0x10030) {
@@ -103,7 +110,12 @@ void MouseInput::inputReport(InputReport const &rep) {
 	}
 }
 
-MouseInput mouseinput;
+static MouseInput mouseinput;
+static MouseDevInput mousedevinput;
+
+void MouseDevInput::inputDeviceAdd(InputDev *dev) {
+	dev->addListener(&mouseinput);
+}
 
 void Mouse_Setup() {
 #define TILE_LINE(c1, c2, c3, c4, c5, c6, c7, c8, p12, p34, p56, p78)	\
@@ -131,14 +143,15 @@ void Mouse_Setup() {
 		TILE_LINE(0,0,0,0,0,0,0,0, 0,0,0,0),
 		TILE_LINE(0,0,0,0,0,0,0,0, 0,0,0,0),
 		};
-
-	Input_registerListener(&mouseinput);
-	mouseinput.sprite_tile_base =
+#undef TILE_LINE
+	   mouseinput.refIsStatic();
+	Input_registerDeviceListener(&mousedevinput);
+	   mouseinput.sprite_tile_base =
 		sprite_alloc_vmem(0x10*2, 0x10, ~0U) / 0x10;
 	FPGAComm_CopyToFPGA(FPGA_GRPH_SPRITES_RAM +
-			    mouseinput.sprite_tile_base*0x10*4,
+			                     mouseinput.sprite_tile_base*0x10*4,
 			    tiles, sizeof(tiles));
-	mouseinput.sprite_map_base = sprite_alloc_vmem(2, 1, ~0U);
+	   mouseinput.sprite_map_base = sprite_alloc_vmem(2, 1, ~0U);
 	uint32_t map[] = {
 		//operator + promotes to (int), even if all arguments are uint8_t
 		uint32_t((mouseinput.sprite_tile_base + 0) << 2),
@@ -147,14 +160,14 @@ void Mouse_Setup() {
 	FPGAComm_CopyToFPGA(FPGA_GRPH_SPRITES_RAM +
 			    mouseinput.sprite_map_base*4,
 			    map, sizeof(map));
-	mouseinput.spriteinfo.hpos = -16;
-	mouseinput.spriteinfo.vpos = -16;
-	mouseinput.spriteinfo.map_addr = mouseinput.sprite_map_base;
-	mouseinput.spriteinfo.hsize = 1;
-	mouseinput.spriteinfo.vsize = 2;
-	mouseinput.spriteinfo.hpitch = 1;
-	mouseinput.spriteinfo.doublesize = 0;
-	mouseinput.sprite.setSpriteInfo(mouseinput.spriteinfo);
-	mouseinput.sprite.setZOrder(65536);
-	mouseinput.sprite.setPriority(65536);
+	   mouseinput.spriteinfo.hpos = -16;
+	   mouseinput.spriteinfo.vpos = -16;
+	   mouseinput.spriteinfo.map_addr = mouseinput.sprite_map_base;
+	   mouseinput.spriteinfo.hsize = 1;
+	   mouseinput.spriteinfo.vsize = 2;
+	   mouseinput.spriteinfo.hpitch = 1;
+	   mouseinput.spriteinfo.doublesize = 0;
+	   mouseinput.sprite.setSpriteInfo(mouseinput.spriteinfo);
+	   mouseinput.sprite.setZOrder(65536);
+	   mouseinput.sprite.setPriority(65536);
 }
