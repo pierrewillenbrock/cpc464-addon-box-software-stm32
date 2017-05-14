@@ -20,14 +20,15 @@ private:
 	void refcountinc() { refcount++; }
 	void refcountdec() {
 		refcount--;
-		K *_this = static_cast<K*>(this);
-		if (!refcount)
+		if (!refcount) {
+			K *_this = dynamic_cast<K*>(this);
 			delete _this;
+		}
 	}
 	void refcountnonzero() { assert(refcount != 0); }
 public:
 	Refcounted() : refcount(0) {}
-	~Refcounted() { assert(refcount == 0); }
+	virtual ~Refcounted() { assert(refcount == 0); }
 };
 
 template <class RO>

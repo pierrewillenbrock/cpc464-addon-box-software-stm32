@@ -13,10 +13,11 @@ add_definitions(
   -DHSE_VALUE=16000000
   )
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -fno-unwind-tables -fno-common -fno-exceptions -fno-rtti -fdata-sections -ffunction-sections -std=c++14"
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -fno-unwind-tables -fno-common -fno-exceptions -fdata-sections -ffunction-sections -std=c++14"
   )
+  #-fno-rtti
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -fno-unwind-tables -fno-common -fno-exceptions -fdata-sections -ffunction-sections"
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -fno-unwind-tables -fno-common -fno-exceptions -fdata-sections -ffunction-sections"
   )
 
 function(enable_unity_build UB_SUFFIX SOURCE_VARIABLE_NAME)
