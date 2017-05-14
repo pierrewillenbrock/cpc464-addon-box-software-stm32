@@ -35,6 +35,7 @@
 #include <hw/led.h>
 #include <deferredwork.hpp>
 #include <ui/notify.hpp>
+#include <usbdevicenotify.h>
 
 static void LED_Setup() {
 	LED_RCC_FUNC(LED_RCC, ENABLE);
@@ -347,6 +348,7 @@ int main()
 	SDcard_Setup();
 
 	ui::Notification_Setup();
+	USBDeviceNotify_Setup(); // must be first usb driver
 	USBHID_Setup();
 	USB_Setup();
 
