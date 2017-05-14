@@ -24,7 +24,19 @@ void operator delete(void* ptr) _GLIBCXX_USE_NOEXCEPT {
   free(ptr);
 }
 
+void operator delete(void* ptr, std::size_t /*sz*/) _GLIBCXX_USE_NOEXCEPT {
+  if (!ptr)
+    return;
+  free(ptr);
+}
+
 void operator delete[](void* ptr) _GLIBCXX_USE_NOEXCEPT {
+  if (!ptr)
+    return;
+  free(ptr);
+}
+
+void operator delete[](void* ptr, std::size_t /*sz*/) _GLIBCXX_USE_NOEXCEPT {
   if (!ptr)
     return;
   free(ptr);

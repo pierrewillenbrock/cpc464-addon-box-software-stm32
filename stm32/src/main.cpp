@@ -417,6 +417,7 @@ int main()
 		.vsize = 1,
 		.hpitch = 13,
 		.doublesize = 1,
+		.reserved = 0,
 	};
 	logo_sprite.setSpriteInfo(logo_sprite_info);
 	logo_sprite.setPriority(0);

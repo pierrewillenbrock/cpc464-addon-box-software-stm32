@@ -122,6 +122,7 @@ set(MAIN_CSRCS
   ext/libsigc++-2.10.0/sigc++/connection.cc
   )
 
+# since source flags are getting set, this is everything or nothing.
 #enable_unity_build(ubtester TESTER_CSRCS)
 #enable_unity_build(ubmain MAIN_CSRCS)
 

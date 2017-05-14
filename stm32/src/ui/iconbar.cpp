@@ -573,6 +573,8 @@ static uint32_t const settingsbr[] = { //uses palettes #8
 #undef W
 };
 
+#undef TILE_LINE
+
 #define MAP(t, p) ((((t) & 0x7f) << 2) | ((p) << 17))
 static uint32_t iconbar_map[36];
 
@@ -686,7 +688,8 @@ public:
       .hsize = 18,
       .vsize = 2,
       .hpitch = 18,
-      .doublesize = 0
+      .doublesize = 0,
+      .reserved = 0,
     };
     sprite.setSpriteInfo(info);
   }
@@ -698,7 +701,8 @@ public:
       .hsize = 18,
       .vsize = 2,
       .hpitch = 18,
-      .doublesize = 0
+      .doublesize = 0,
+      .reserved = 0,
     };
     sprite.setSpriteInfo(info);
     sprite.setZOrder(0);
@@ -1251,3 +1255,4 @@ joystick bottom right tile uses transparent, black, gray, yellow, bright red, 2x
 lpen can probably use disk bottom right tile+disk top left tile
  */
 
+// kate: indent-width 2; indent-mode cstyle;

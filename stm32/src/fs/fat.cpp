@@ -703,7 +703,7 @@ _ssize_t FatInode::pread_nb(PReadCommand * command) {
 	return 0;
 }
 
-_ssize_t FatInode::pwrite_nb(PWriteCommand * command) {
+_ssize_t FatInode::pwrite_nb(PWriteCommand * /*command*/) {
 	errno = EINVAL;
 	return -1;
 }

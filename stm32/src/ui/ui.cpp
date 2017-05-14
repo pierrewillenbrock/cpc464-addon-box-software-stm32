@@ -172,7 +172,7 @@ void UI_mouseWheel(int8_t dz) {
     current_mousefocus->mouseWheel(dz, mousestate);
 }
 
-void UI_keyDown(uint16_t keycode) {
+void UI_keyDown(uint16_t /*keycode*/) {
   /**\todo sending on keycodes is easy, but we also need to decode
      to ascii, add key-repeat for the keyChar, use
      arrow keys/tab/shift+tab/backtab for navigation and enter/space/return etc.
@@ -180,7 +180,7 @@ void UI_keyDown(uint16_t keycode) {
    */
 }
 
-void UI_keyUp(uint16_t keycode) {
+void UI_keyUp(uint16_t /*keycode*/) {
 }
 
 void UI_setTopLevelControl(ui::Control *control) {

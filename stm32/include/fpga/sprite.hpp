@@ -21,8 +21,17 @@ public:
   Sprite &operator=(Sprite const &sp);
   ~Sprite();
   // higher zorder gets ordered on top of lower.
+  /** \brief Set the Z-Order of this sprite
+   *
+   * Sets the Z-Order of this sprite. Higher zorder sprites get layered on top.
+   * \param zorder  Z-Order of this sprite. Higher if in front.
+   */
   void setZOrder(unsigned zorder);
-  // higher priority gets allocated in preference of lower.
+  /** \brief Set priority of this sprite
+   *
+   * Sets the priority of this sprite. Higher ist more important.
+   * \param priority  Priority of the sprite. Higher ist more important.
+   */
   void setPriority(unsigned priority);
   // this trys to make the given sprite visible, but may fail at that.
   // check isAllocated if you need to know if it is actually visible.

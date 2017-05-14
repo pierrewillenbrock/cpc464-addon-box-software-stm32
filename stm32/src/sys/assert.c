@@ -66,10 +66,16 @@ void NMI_Handler(void)
 	assert_failed((uint8_t *)__FILE__, __LINE__);
 }
 
+/* need to have that globally, gcc checks only at the end when the diagnostic
+ * scope is left already */
+#pragma GCC diagnostic ignored "-Wunused-variable"
 static SCB_Type * scb = SCB;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 static void FatalExceptionHandler(struct ARMv7M_FPUExceptionFrame * fp) {
 	assert_failed((uint8_t *)__FILE__, __LINE__);
 }
+#pragma GCC diagnostic pop
 
 void HardFault_Handler(void) __attribute__((naked));
 void HardFault_Handler(void)

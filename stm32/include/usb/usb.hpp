@@ -37,7 +37,7 @@ public:
 class USBDriverDevice {
 public:
 	//called once the interface is ready for use
-	virtual void interfaceClaimed(uint8_t interfaceNumber, uint8_t alternateSetting) {};
+	virtual void interfaceClaimed(uint8_t /*interfaceNumber*/, uint8_t /*alternateSetting*/) {};
 	virtual void deviceClaimed() {};
 	//called only for the driver that claimed it. the driver is supposed to
 	//drop all references to the usbdevice.

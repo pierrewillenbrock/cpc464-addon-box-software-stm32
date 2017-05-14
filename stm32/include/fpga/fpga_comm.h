@@ -14,6 +14,8 @@ struct FPGAComm_Command {
 	uint8_t state;
 };
 
+#define FPGAComm_Command_Private_Init .state = 0
+
 #ifdef __cplusplus
 extern "C" {
 #endif

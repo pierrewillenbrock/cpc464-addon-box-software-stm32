@@ -198,7 +198,8 @@ static const sprite_info sprite_default = {
 	.hsize = 0,
 	.vsize = 0,
 	.hpitch = 0,
-	.doublesize = 0
+	.doublesize = 0,
+	.reserved = 0
 };
 static std::list<Sprite *> sprite_registered;
 static Sprite * sprite_allocated[4] = {0,0,0,0};
