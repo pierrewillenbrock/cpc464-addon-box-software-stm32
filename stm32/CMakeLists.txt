@@ -139,7 +139,7 @@ add_executable(main
 
 set_target_properties(main PROPERTIES
   LINK_DEPENDS "${STM32_SOURCE_DIR}/link.ld"
-  LINK_FLAGS "-T \"${STM32_SOURCE_DIR}/link.ld\" -nostartfiles -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -O2 -Wl,--gc-section -Wl,--wrap=_calloc_r -Wl,--wrap=_free_r -Wl,--wrap=_malloc_r -Wl,--wrap=_memalign_r -Wl,--wrap=_realloc_r -Wl,--wrap=_valloc_r -Wl,--wrap=_pvalloc_r -Wl,--wrap=_malloc_stats_r")
+  LINK_FLAGS "-T \"${STM32_SOURCE_DIR}/link.ld\" -nostartfiles -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -O2 -Wl,--gc-section -Wl,--wrap=_calloc_r -Wl,--wrap=_free_r -Wl,--wrap=_malloc_r -Wl,--wrap=_memalign_r -Wl,--wrap=_realloc_r -Wl,--wrap=_valloc_r -Wl,--wrap=_pvalloc_r -Wl,--wrap=_malloc_stats_r -Wl,--wrap=_mallinfo_r")
 
 set_target_properties(tester PROPERTIES
   LINK_DEPENDS "${STM32_SOURCE_DIR}/link.ld"

@@ -78,7 +78,14 @@ SECTIONS
             /* This is used by the startup in order to initialize the .bss secion */
          _ebss = . ;
     } >RAM
-   . = ALIGN(32);
+    /* bheap < 0x20010000:
+      align(128): uses up to 3 MPU slots
+      align(1024): uses up to 2 MPU slots
+      bheap < 0x20020000:
+      align(256): uses up to 3 MPU slots
+      align(2048): uses up to 2 MPU slots
+      */
+   . = ALIGN(128);
    PROVIDE (_bheap = .);
  }
 
