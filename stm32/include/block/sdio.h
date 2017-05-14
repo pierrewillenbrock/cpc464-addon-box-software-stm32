@@ -34,22 +34,26 @@
 
 #define SDIO_APPCMD 0x80
 
+enum SDResponseType {
+	NoResponse,
+	ResponseShort,
+	ResponseLong,
+	Response1, //like short, but sdio knows how to detect errors
+	Response3, //like short, but sdio ignores crc errors
+};
+
+enum SDDataType {
+	NoData,
+	DataToSDIO,
+	DataToCard
+};
+
 struct SDCommand {
 	uint32_t argument;
 	uint8_t command; //can be ored with SDIO_APPCMD to automatically send Cmd55
 	uint16_t rca;//used with SDIO_APPCMD
-	enum {
-		NoResponse,
-		ResponseShort,
-		ResponseLong,
-		Response1, //like short, but sdio knows how to detect errors
-		Response3, //like short, but sdio ignores crc errors
-	} responseType;
-	enum {
-		NoData,
-		DataToSDIO,
-		DataToCard
-	} dataType;
+	enum SDResponseType responseType;
+	enum SDDataType dataType;
 	uint8_t retryCounter;
 	uint32_t response[4];
 	void *data;

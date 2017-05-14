@@ -278,8 +278,8 @@ static struct SDCommand command;
 static void SDcard_init_reset() {
 	command.argument = 0;
 	command.command = 0;
-	command.responseType = SDCommand::NoResponse;
-	command.dataType = SDCommand::NoData;
+	command.responseType = SDResponseType::NoResponse;
+	command.dataType = SDDataType::NoData;
 	command.retryCounter = 0;
 	command.data = NULL;
 	command.completion = SDcard_init_reset_cmpl;
@@ -299,8 +299,8 @@ static void SDcard_init_reset_cmpl(int result, struct SDCommand */*unused*/) {
 static void SDcard_init_interface_condition() {
 	command.argument = 0x000001aa;
 	command.command = 8;
-	command.responseType = SDCommand::ResponseShort;
-	command.dataType = SDCommand::NoData;
+	command.responseType = SDResponseType::ResponseShort;
+	command.dataType = SDDataType::NoData;
 	command.retryCounter = 2;
 	command.data = NULL;
 	command.completion = SDcard_init_interface_condition_cmpl;
@@ -332,8 +332,8 @@ static void SDcard_init_interface_condition_cmpl(int result, struct SDCommand */
 static void SDcard_init_sdcard_probe() {
 	command.argument = 0;
 	command.command = 55;
-	command.responseType = SDCommand::Response1;
-	command.dataType = SDCommand::NoData;
+	command.responseType = SDResponseType::Response1;
+	command.dataType = SDDataType::NoData;
 	command.retryCounter = 2;
 	command.data = NULL;
 	command.completion = SDcard_init_sdcard_probe_cmpl;
@@ -358,8 +358,8 @@ static void SDcard_init_operation_condition() {
 		(card_type == Card2?SD_HIGH_CAPACITY:0);
 	command.command = 41 | SDIO_APPCMD;
 	command.rca = 0;
-	command.responseType = SDCommand::Response3;//no crc
-	command.dataType = SDCommand::NoData;
+	command.responseType = SDResponseType::Response3;//no crc
+	command.dataType = SDDataType::NoData;
 	command.retryCounter = 2;
 	command.data = NULL;
 	command.completion = SDcard_init_operation_condition_cmpl;
@@ -420,8 +420,8 @@ static void SDcard_init_get_CID() {
 	//Cmd2: get CID (from all connected cards)
 	command.argument = 0;
 	command.command = 2;
-	command.responseType = SDCommand::ResponseLong;
-	command.dataType = SDCommand::NoData;
+	command.responseType = SDResponseType::ResponseLong;
+	command.dataType = SDDataType::NoData;
 	command.retryCounter = 2;
 	command.data = NULL;
 	command.completion = SDcard_init_get_CID_cmpl;
@@ -448,8 +448,8 @@ static void SDcard_init_set_addr() {
 	//(card generates a new address for itself)
 	command.argument = 0;
 	command.command = 3;
-	command.responseType = SDCommand::ResponseShort;
-	command.dataType = SDCommand::NoData;
+	command.responseType = SDResponseType::ResponseShort;
+	command.dataType = SDDataType::NoData;
 	command.retryCounter = 2;
 	command.data = NULL;
 	command.completion = SDcard_init_set_addr_cmpl;
@@ -478,8 +478,8 @@ static void SDcard_init_get_CSD() {
 	//Cmd9: query CSD
 	command.argument = card_rca << 16;
 	command.command = 9;
-	command.responseType = SDCommand::ResponseLong;
-	command.dataType = SDCommand::NoData;
+	command.responseType = SDResponseType::ResponseLong;
+	command.dataType = SDDataType::NoData;
 	command.retryCounter = 2;
 	command.data = NULL;
 	command.completion = SDcard_init_get_CSD_cmpl;
@@ -521,8 +521,8 @@ static void SDcard_init_select_card() {
 	/* Cmd7: Select card */
 	command.argument = card_rca << 16;
 	command.command = 7;
-	command.responseType = SDCommand::Response1;
-	command.dataType = SDCommand::NoData;
+	command.responseType = SDResponseType::Response1;
+	command.dataType = SDDataType::NoData;
 	command.retryCounter = 2;
 	command.data = NULL;
 	command.completion = SDcard_init_select_card_cmpl;
@@ -542,8 +542,8 @@ static void SDcard_init_select_card_cmpl(int result, struct SDCommand */*unused*
 static void SDcard_init_get_status() {
 	command.argument = card_rca << 16;
 	command.command = 13;
-	command.responseType = SDCommand::Response1;
-	command.dataType = SDCommand::NoData;
+	command.responseType = SDResponseType::Response1;
+	command.dataType = SDDataType::NoData;
 	command.retryCounter = 2;
 	command.data = NULL;
 	command.completion = SDcard_init_get_status_cmpl;
@@ -566,8 +566,8 @@ static void SDcard_init_get_SCR() {
 	command.argument = 0;
 	command.command = 51 | SDIO_APPCMD;
 	command.rca = card_rca;
-	command.responseType = SDCommand::Response1;
-	command.dataType = SDCommand::DataToSDIO;
+	command.responseType = SDResponseType::Response1;
+	command.dataType = SDDataType::DataToSDIO;
 	command.retryCounter = 2;
 	command.data = &card_SCR.d[0];
 	command.datalength = 8;
@@ -594,8 +594,8 @@ static void SDcard_init_set_blocksize() {
 	/* Cmd16: Set Block Size for Card */
 	command.argument = 512;
 	command.command = 16;
-	command.responseType = SDCommand::Response1;
-	command.dataType = SDCommand::NoData;
+	command.responseType = SDResponseType::Response1;
+	command.dataType = SDDataType::NoData;
 	command.retryCounter = 2;
 	command.data = NULL;
 	command.completion = SDcard_init_set_blocksize_cmpl;
@@ -621,8 +621,8 @@ static void SDcard_init_set_bus_width() {
 	command.argument = 0x2; //four bits
 	command.command = 6 | SDIO_APPCMD;
 	command.rca = card_rca;
-	command.responseType = SDCommand::Response1;//no crc
-	command.dataType = SDCommand::NoData;
+	command.responseType = SDResponseType::Response1;//no crc
+	command.dataType = SDDataType::NoData;
 	command.retryCounter = 2;
 	command.data = NULL;
 	command.completion = SDcard_init_set_bus_width_cmpl;
@@ -774,12 +774,12 @@ static void SDcard_read_sectors2(struct MSDReadCommand *command) {
 		command->sdcard.sdcommand.command = 17;
 	}
 	command->sdcard.sdcommand.rca = card_rca;
-	command->sdcard.sdcommand.responseType = SDCommand::Response1;
+	command->sdcard.sdcommand.responseType = SDResponseType::Response1;
 	command->sdcard.sdcommand.retryCounter = 2;
 	command->sdcard.sdcommand.data = command->dst;
 	command->sdcard.sdcommand.datalength = 512*command->num_blocks;
 	command->sdcard.sdcommand.datablocksize = SDIO_DataBlockSize_512b;
-	command->sdcard.sdcommand.dataType = SDCommand::DataToSDIO;
+	command->sdcard.sdcommand.dataType = SDDataType::DataToSDIO;
 	command->sdcard.sdcommand.completion = SDcard_read_sectors2_cmpl;
 
 	SDIO_Command(&command->sdcard.sdcommand);
@@ -817,8 +817,8 @@ static void SDcard_read_sectors3(struct MSDReadCommand *command) {
 	/* Cmd12: STOP_TRANSMISSION */
 	command->sdcard.sdcommand.argument = 0;
 	command->sdcard.sdcommand.command = 12;
-	command->sdcard.sdcommand.responseType = SDCommand::Response1;
-	command->sdcard.sdcommand.dataType = SDCommand::NoData;
+	command->sdcard.sdcommand.responseType = SDResponseType::Response1;
+	command->sdcard.sdcommand.dataType = SDDataType::NoData;
 	command->sdcard.sdcommand.retryCounter = 2;
 	command->sdcard.sdcommand.data = NULL;
 	command->sdcard.sdcommand.completion = SDcard_read_sectors3_cmpl;
