@@ -43,7 +43,7 @@ struct PReadCommand {
 	void *ptr;
 	size_t len;
 	off_t offset;
-	void (*completion)(int result, int errno, struct PReadCommand *command);
+	void (*completion)(int /*result*/, int /*errno*/, struct PReadCommand */*command*/);
 	void *pdata;
 };
 
@@ -51,17 +51,17 @@ struct PWriteCommand {
 	void const *ptr;
 	size_t len;
 	off_t offset;
-	void (*completion)(int result, int errno, struct PReadCommand *command);
+	void (*completion)(int /*result*/, int /*errno*/, struct PReadCommand */*command*/);
 	void *pdata;
 };
 
-#define isRWPtr(p) ( ((uint32_t)(p)) >= 0x20000000 &&	\
+#define isRAMPtr(p) ( ((uint32_t)(p)) >= 0x20000000 &&	\
 		     ((uint32_t)(p)) < 0x20000000 + 128*1024)
-#define isRPtr(p) ( (((uint32_t)(p)) >= 0x08000000 &&		  \
-		     ((uint32_t)(p)) < 0x08000000 + 1024*1024) || \
-		    (((uint32_t)(p)) >= 0x00000000 &&		  \
-		     ((uint32_t)(p)) < 0x00000000 + 1024*1024) || \
-		    isRWPtr(p))
+#define isROMPtr(p) (((uint32_t)(p)) >= 0x08000000 &&		  \
+		     ((uint32_t)(p)) < 0x08000000 + 1024*1024)
+#define isLOWMEMPtr(p) (((uint32_t)(p)) < 0x00000000 + 1024*1024)
+#define isRWPtr(p) isRAMPtr(p)
+#define isRPtr(p) ( isROMPtr(p) || isLOWMEMPtr(p) || isRAMPtr(p) )
 
 #ifdef __cplusplus
 extern "C" {

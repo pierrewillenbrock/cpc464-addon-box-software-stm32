@@ -46,11 +46,11 @@ typedef struct
 class DSK : public Disk {
 private:
 	unsigned short TrackSize;
-	void preloadReadComplete(int res, int errno, PReadCommand *command);
-	static void _preloadReadComplete(int res, int errno, PReadCommand *command);
+	void preloadReadComplete(int res, int errno_code, PReadCommand *command);
+	static void _preloadReadComplete(int res, int errno_code, PReadCommand *command);
 	void fillSectorInfoAndComplete();
-	void findSectorReadComplete(int res, int errno, PReadCommand *command);
-	static void _findSectorReadComplete(int res, int errno, PReadCommand *command);
+	void findSectorReadComplete(int res, int errno_code, PReadCommand *command);
+	static void _findSectorReadComplete(int res, int errno_code, PReadCommand *command);
 public:
 	bool probe(int fd);
 	virtual void close();
@@ -99,11 +99,11 @@ class ExtDSK : public Disk {
 private:
 	unsigned short TrackSize;
 	std::vector<unsigned char> TrackSizeTable;
-	void preloadReadComplete(int res, int errno, PReadCommand *command);
-	static void _preloadReadComplete(int res, int errno, PReadCommand *command);
+	void preloadReadComplete(int res, int errno_code, PReadCommand *command);
+	static void _preloadReadComplete(int res, int errno_code, PReadCommand *command);
 	void fillSectorInfoAndComplete();
-	void findSectorReadComplete(int res, int errno, PReadCommand *command);
-	static void _findSectorReadComplete(int res, int errno, PReadCommand *command);
+	void findSectorReadComplete(int res, int errno_code, PReadCommand *command);
+	static void _findSectorReadComplete(int res, int errno_code, PReadCommand *command);
 public:
 	bool probe(int fd);
 	virtual void close();
@@ -176,13 +176,13 @@ void DSK::close() {
 	::close(f);
 }
 
-void DSK::preloadReadComplete(int res, int errno, PReadCommand *command) {
+void DSK::preloadReadComplete(int res, int errno_code, PReadCommand *command) {
 	current_cylinderno = preload_cylinderno;
 	if (res == -1)
 		current_cylinderno = ~0U;
 	if (state == FIND) {
 		if (current_cylinderno == current_command->pcn) {
-			findSectorReadComplete(res, errno, command);
+			findSectorReadComplete(res, errno_code, command);
 		} else {
 			unsigned TrackIndex = current_command->pcn * NumSides;
 			unsigned CylinderSize = TrackSize * NumSides;
@@ -199,10 +199,10 @@ void DSK::preloadReadComplete(int res, int errno, PReadCommand *command) {
 	}
 }
 
-void DSK::_preloadReadComplete(int res, int errno, PReadCommand *command) {
+void DSK::_preloadReadComplete(int res, int errno_code, PReadCommand *command) {
 	PReadInfo *i = container_of(command, PReadInfo, cmd);
 	static_cast<DSK*>(i->_this)->
-		preloadReadComplete(res, errno, command);
+		preloadReadComplete(res, errno_code, command);
 }
 
 void DSK::preloadCylinder(unsigned pcn) {
@@ -306,10 +306,10 @@ void DSK::findSectorReadComplete(int res, int /*errno*/, PReadCommand */*command
 }
 
 
-void DSK::_findSectorReadComplete(int res, int errno, PReadCommand *command) {
+void DSK::_findSectorReadComplete(int res, int errno_code, PReadCommand *command) {
 	PReadInfo *i = container_of(command, PReadInfo, cmd);
 	static_cast<DSK*>(i->_this)->
-		findSectorReadComplete(res, errno, command);
+		findSectorReadComplete(res, errno_code, command);
 }
 
 void DSK::findSector(DiskFindSectorCommand *command) {
@@ -388,13 +388,13 @@ void ExtDSK::close() {
 	::close(f);
 }
 
-void ExtDSK::preloadReadComplete(int res, int errno, PReadCommand *command) {
+void ExtDSK::preloadReadComplete(int res, int errno_code, PReadCommand *command) {
 	current_cylinderno = preload_cylinderno;
 	if (res == -1)
 		current_cylinderno = ~0U;
 	if (state == FIND) {
 		if (current_cylinderno == current_command->pcn) {
-			findSectorReadComplete(res, errno, command);
+			findSectorReadComplete(res, errno_code, command);
 		} else {
 			unsigned TrackIndex = current_command->pcn * NumSides;
 			unsigned CylinderSize = 0;
@@ -416,10 +416,10 @@ void ExtDSK::preloadReadComplete(int res, int errno, PReadCommand *command) {
 	}
 }
 
-void ExtDSK::_preloadReadComplete(int res, int errno, PReadCommand *command) {
+void ExtDSK::_preloadReadComplete(int res, int errno_code, PReadCommand *command) {
 	PReadInfo *i = container_of(command, PReadInfo, cmd);
 	static_cast<ExtDSK*>(i->_this)->
-		preloadReadComplete(res, errno, command);
+		preloadReadComplete(res, errno_code, command);
 }
 
 void ExtDSK::preloadCylinder(unsigned pcn) {
@@ -551,10 +551,10 @@ void ExtDSK::findSectorReadComplete(int res, int /*errno*/, PReadCommand */*comm
 	fillSectorInfoAndComplete();
 }
 
-void ExtDSK::_findSectorReadComplete(int res, int errno, PReadCommand *command) {
+void ExtDSK::_findSectorReadComplete(int res, int errno_code, PReadCommand *command) {
 	PReadInfo *i = container_of(command, PReadInfo, cmd);
 	static_cast<ExtDSK*>(i->_this)->
-		findSectorReadComplete(res, errno, command);
+		findSectorReadComplete(res, errno_code, command);
 }
 
 void ExtDSK::findSector(DiskFindSectorCommand *command) {

@@ -176,14 +176,14 @@ void VFS_Setup() {
 	rootDentry->inode->mkdir(devDentry, S_IRWXU | S_IRWXG | S_IRWXO);
 	rootDentry->insertChild(devDentry);
 	devDentry->fully_populated = true;
-	RefPtr<Inode> null = new NullInode();
-	RefPtr<Inode> stdout = new StdOutInode();
+	RefPtr<Inode> null_ino = new NullInode();
+	RefPtr<Inode> stdout_ino = new StdOutInode();
 	RefPtr<Dentry> d = new Dentry("null", devDentry);
-	devDentry->inode->mknod(d, S_IRWXU | S_IRWXG | S_IRWXO, null);
+	devDentry->inode->mknod(d, S_IRWXU | S_IRWXG | S_IRWXO, null_ino);
 	devDentry->insertChild(d);
 	fds[0] = new File(d, O_RDONLY);
 	d = new Dentry("stdout", devDentry);
-	devDentry->inode->mknod(d, S_IRWXU | S_IRWXG | S_IRWXO, stdout);
+	devDentry->inode->mknod(d, S_IRWXU | S_IRWXG | S_IRWXO, stdout_ino);
 	devDentry->insertChild(d);
 	fds[2] = fds[1] = new File(d, O_WRONLY);
 	RefPtr<Dentry> mediaDentry = new Dentry("media", rootDentry);
