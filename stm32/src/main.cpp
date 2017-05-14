@@ -34,6 +34,7 @@
 #include <ui/ui.hpp>
 #include <hw/led.h>
 #include <deferredwork.hpp>
+#include <ui/notify.hpp>
 
 static void LED_Setup() {
 	LED_RCC_FUNC(LED_RCC, ENABLE);
@@ -345,6 +346,7 @@ int main()
 	FAT_Setup();
 	SDcard_Setup();
 
+	ui::Notification_Setup();
 	USBHID_Setup();
 	USB_Setup();
 
