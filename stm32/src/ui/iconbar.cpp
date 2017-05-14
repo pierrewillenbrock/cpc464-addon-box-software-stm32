@@ -826,7 +826,9 @@ void IconBar_DiskMenu::selectItem(int index) {
     UI_setTopLevelControl(&iconbar_control);
   }
   if (iconbar_disk_assigned[diskno]) {
-    addDeferredWork(sigc::bind(sigc::ptr_fun(IconBar_DeferredEjectDisk),diskno));
+    if (index == 0) {
+      addDeferredWork(sigc::bind(sigc::ptr_fun(IconBar_DeferredEjectDisk),diskno));
+    }
     UI_setTopLevelControl(&iconbar_control);
     iconbar_diskmenu.setVisible(false);
   } else {
