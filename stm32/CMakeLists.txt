@@ -100,6 +100,7 @@ set(MAIN_CSRCS
   src/ui/fileselect.cpp
   src/ui/icons.cpp
   src/ui/videosettings.cpp
+  src/ui/meminfo.cpp
   src/ui/notify.cpp
   src/bsp/system_stm32f4xx.c
   #  src/bsp/stm32f4xx_crc.c

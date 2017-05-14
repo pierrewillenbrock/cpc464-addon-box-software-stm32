@@ -5,6 +5,7 @@
 #include "menu.hpp"
 #include "fileselect.hpp"
 #include "videosettings.hpp"
+#include "meminfo.hpp"
 
 #include <fpga/sprite.hpp>
 #include <fpga/fpga_comm.h>
@@ -657,12 +658,16 @@ class IconBar_SettingsMenu : public ui::Menu {
 public:
   /*
         > Display settings
+        > Memory Info
    */
   unsigned int getItemCount() {
-    return 1;
+    return 2;
   }
-  std::string getItemText(unsigned int /*index*/) {
-    return "Display settings";
+  std::string getItemText(unsigned int index) {
+    if(index == 0)
+      return "Display settings";
+    else
+      return "Memory Info";
   }
   sigc::connection settingsClosedCon;
   void selectItem(int index);
@@ -801,6 +806,7 @@ public:
 static IconBar_Control iconbar_control;
 static ui::FileSelect iconbar_fileselect;
 static ui::VideoSettings iconbar_videosettings;
+static ui::MemInfo iconbar_meminfo;
 
 static void IconBar_DeferredEjectDisk(unsigned drive) {
   FDC_EjectDisk(drive);
@@ -894,10 +900,17 @@ void IconBar_SettingsMenu::selectItem(int index) {
     settingsClosedCon = iconbar_videosettings.onClose().connect(sigc::mem_fun(this, &IconBar_SettingsMenu::settingsClosed));
     UI_setTopLevelControl(&iconbar_videosettings);
   }
+  if (index == 1) {
+    iconbar_settingsmenu.setVisible(false);
+    iconbar_meminfo.setVisible(true);
+    settingsClosedCon = iconbar_meminfo.onClose().connect(sigc::mem_fun(this, &IconBar_SettingsMenu::settingsClosed));
+    UI_setTopLevelControl(&iconbar_meminfo);
+  }
 }
 
 void IconBar_SettingsMenu::settingsClosed() {
   iconbar_videosettings.setVisible(false);
+  iconbar_meminfo.setVisible(false);
   UI_setTopLevelControl(&iconbar_control);
   settingsClosedCon.disconnect();
 }
