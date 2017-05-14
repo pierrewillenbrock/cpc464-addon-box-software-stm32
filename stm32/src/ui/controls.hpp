@@ -3,7 +3,7 @@
 
 #include <ui/ui.hpp>
 #include <fpga/sprite.hpp>
-#include "icons.hpp"
+#include <ui/icons.hpp>
 
 #include <string>
 #include <vector>

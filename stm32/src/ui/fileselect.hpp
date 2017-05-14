@@ -6,7 +6,7 @@
 #include "controls.hpp"
 #include "listbox.hpp"
 #include "input.hpp"
-#include "icons.hpp"
+#include <ui/icons.hpp>
 
 #include <string>
 #include <vector>

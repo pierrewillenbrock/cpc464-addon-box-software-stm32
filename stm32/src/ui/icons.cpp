@@ -1,5 +1,5 @@
 
-#include "icons.hpp"
+#include <ui/icons.hpp>
 
 #include <fpga/sprite.h>
 #include <fpga/layout.h>
