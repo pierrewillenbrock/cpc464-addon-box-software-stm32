@@ -710,8 +710,8 @@ public:
       .reserved = 0,
     };
     sprite.setSpriteInfo(info);
-    sprite.setZOrder(0);
-    sprite.setPriority(1);
+    sprite.setPriority(10);
+    sprite.setZOrder(20);
     sprite.setVisible(true);
     ui::screen.onRectChange().connect
       (sigc::mem_fun(this, &IconBar_Control::screenRectChange));

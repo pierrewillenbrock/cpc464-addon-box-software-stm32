@@ -13,7 +13,7 @@ Hint::Hint() {
   m_spriteinfo.vsize = 1;
   m_spriteinfo.hpitch = 0;
   m_spriteinfo.doublesize = 0;
-  m_sprite.setPriority(2);
+  m_sprite.setPriority(10);
   m_sprite.setZOrder(50);
 }
 
