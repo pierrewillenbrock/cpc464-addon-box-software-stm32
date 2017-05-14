@@ -13,11 +13,11 @@
 #include <irq.h>
 #include <timer.h>
 
-static uint32_t timer_handle = 0;
-static struct SDCommand * volatile current_command = NULL;
 #include "sdcard_std.h"
 #include <hw/sd.h>
 
+static uint32_t sdio_timer_handle = 0;
+static struct SDCommand * volatile sdio_current_command = NULL;
 
 #ifdef SDIO_DEBUG
 struct SDDebug {
@@ -163,12 +163,12 @@ void SDIO_PowerDown() {
 static void SDIO_timeout(void *unused);
 
 void SDIO_IRQHandler(void) {
-	if (!current_command)
+	if (!sdio_current_command)
 		return;
-	struct SDCommand *c = current_command;
+	struct SDCommand *c = sdio_current_command;
 	if (c->state == 0) {
-		Timer_Cancel(timer_handle);
-		timer_handle = 0;
+		Timer_Cancel(sdio_timer_handle);
+		sdio_timer_handle = 0;
 
 		int result = SDIO_OK;
 
@@ -194,7 +194,7 @@ void SDIO_IRQHandler(void) {
 		if (result != SDIO_OK && c->retryCounter > 0) {
 			SD_DEBUG_SAMPLE(result, c);
 			c->retryCounter--;
-			current_command = NULL;
+			sdio_current_command = NULL;
 			SDIO_Command(c);
 			return;
 		}
@@ -202,19 +202,19 @@ void SDIO_IRQHandler(void) {
 		if (result != SDIO_OK) {
 			//SDIO_ClearFlag(0x00c007ff);
 			SD_DEBUG_SAMPLE(result, c);
-			current_command = NULL;
+			sdio_current_command = NULL;
 			c->completion(result, c);
 			return;
 		}
 
 		SD_DEBUG_SAMPLE(result, c);
 		c->command &= ~SDIO_APPCMD;
-		current_command = NULL;
+		sdio_current_command = NULL;
 		SDIO_Command(c);
 		c->command |= SDIO_APPCMD;
 	} else if (c->state == 1) {
-		Timer_Cancel(timer_handle);
-		timer_handle = 0;
+		Timer_Cancel(sdio_timer_handle);
+		sdio_timer_handle = 0;
 
 		int result = SDIO_OK;
 
@@ -285,7 +285,7 @@ void SDIO_IRQHandler(void) {
 			//SDIO_ClearFlag(0x00c007ff);
 			SD_DEBUG_SAMPLE(result, c);
 			c->retryCounter--;
-			current_command = NULL;
+			sdio_current_command = NULL;
 			SDIO_Command(c);
 			return;
 		}
@@ -293,7 +293,7 @@ void SDIO_IRQHandler(void) {
 		if (result != SDIO_OK) {
 			//SDIO_ClearFlag(0x00c007ff);
 			SD_DEBUG_SAMPLE(result, c);
-			current_command = NULL;
+			sdio_current_command = NULL;
 			c->completion(result, c);
 			return;
 		}
@@ -302,7 +302,7 @@ void SDIO_IRQHandler(void) {
 		case NoData:
 			//SDIO_ClearFlag(0x00c007ff);
 			SD_DEBUG_SAMPLE(result, c);
-			current_command = NULL;
+			sdio_current_command = NULL;
 			c->completion(result, c);
 			break;
 		case DataToSDIO:
@@ -313,7 +313,7 @@ void SDIO_IRQHandler(void) {
 			SDIO_ITConfig(SDIO_IT_DCRCFAIL, ENABLE);
 			SDIO_ITConfig(SDIO_IT_DTIMEOUT, ENABLE);
 			SDIO_ITConfig(SDIO_IT_STBITERR, ENABLE);
-			timer_handle = Timer_Oneshot(1000000, SDIO_timeout, NULL);
+			sdio_timer_handle = Timer_Oneshot(1000000, SDIO_timeout, NULL);
 			break;
 		case DataToCard:
 			SD_DEBUG_SAMPLE(result, c);
@@ -323,12 +323,12 @@ void SDIO_IRQHandler(void) {
 			SDIO_ITConfig(SDIO_IT_DCRCFAIL, ENABLE);
 			SDIO_ITConfig(SDIO_IT_DTIMEOUT, ENABLE);
 			SDIO_ITConfig(SDIO_IT_STBITERR, ENABLE);
-			timer_handle = Timer_Oneshot(1000, SDIO_timeout, NULL);
+			sdio_timer_handle = Timer_Oneshot(1000, SDIO_timeout, NULL);
 			break;
 		}
 	} else if (c->state == 2 || c->state == 3) {
-		Timer_Cancel(timer_handle);
-		timer_handle = 0;
+		Timer_Cancel(sdio_timer_handle);
+		sdio_timer_handle = 0;
 
 		int result = SDIO_UnknownError;
 
@@ -349,16 +349,16 @@ void SDIO_IRQHandler(void) {
 		//SDIO_ClearFlag(0x00c007ff);
 
 		SD_DEBUG_SAMPLE(result, c);
-		current_command = NULL;
+		sdio_current_command = NULL;
 		c->completion(result, c);
 	}
 }
 
 void DMA2_Stream3_IRQHandler() {
-	struct SDCommand *c = current_command;
-	current_command = NULL;
-	Timer_Cancel(timer_handle);
-	timer_handle = 0;
+	struct SDCommand *c = sdio_current_command;
+	sdio_current_command = NULL;
+	Timer_Cancel(sdio_timer_handle);
+	sdio_timer_handle = 0;
 	SDIO_ITConfig(SDIO_IT_RXOVERR, DISABLE);
 	SDIO_ITConfig(SDIO_IT_DCRCFAIL, DISABLE);
 	SDIO_ITConfig(SDIO_IT_DTIMEOUT, DISABLE);
@@ -398,9 +398,9 @@ void DMA2_Stream3_IRQHandler() {
 
 static void SDIO_timeout(void *unused) {
 	(void)unused;
-	struct SDCommand *c = current_command;
-	current_command = NULL;
-	timer_handle = 0;
+	struct SDCommand *c = sdio_current_command;
+	sdio_current_command = NULL;
+	sdio_timer_handle = 0;
 	if (c->retryCounter > 0) {
 		SD_DEBUG_SAMPLE(SDIO_SystemTimeout, c);
 		c->retryCounter--;
@@ -431,7 +431,7 @@ static void SDIO_timeout(void *unused) {
 }
 
 void SDIO_Command(struct SDCommand *command) {
-	assert(!current_command);
+	assert(!sdio_current_command);
 
 	SDIO_ClearFlag(0x00c007ff);
 
@@ -531,8 +531,8 @@ void SDIO_Command(struct SDCommand *command) {
 	sdiocmdinit.SDIO_Wait = SDIO_Wait_No;
 	sdiocmdinit.SDIO_CPSM = SDIO_CPSM_Enable;
 
-	current_command = command;
-	timer_handle = Timer_Oneshot(10000, SDIO_timeout, NULL);
+	sdio_current_command = command;
+	sdio_timer_handle = Timer_Oneshot(10000, SDIO_timeout, NULL);
 	command->datapos = 0;
 
 	SDIO_DataConfig(&sdiodatainit);

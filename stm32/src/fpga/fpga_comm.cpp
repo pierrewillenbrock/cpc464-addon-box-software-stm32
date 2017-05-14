@@ -40,7 +40,7 @@
 #define FPGA_IRQ_EXTI_IRQn EXTI4_IRQn
 #define FPGA_IRQ_EXTI_IRQHandler EXTI4_IRQHandler
 
-static FPGAComm_Command *current_command = NULL;
+static FPGAComm_Command *fpga_current_command = NULL;
 static std::deque<FPGAComm_Command *> workqueue;
 
 void FPGAComm_Setup() {
@@ -184,9 +184,9 @@ static void setupDMA(void *read_data, void const *write_data, uint32_t length) {
 }
 
 static void issueCommand(FPGAComm_Command *command) {
-	assert(!current_command);
+	assert(!fpga_current_command);
 	assert(isRPtr(command));
-	current_command = command;
+	fpga_current_command = command;
 
 	//nss
 	GPIO_ResetBits(SPI_NSS_GPIO, SPI_NSS_PIN);
@@ -206,7 +206,7 @@ static void issueCommand(FPGAComm_Command *command) {
 void FPGAComm_ReadWriteCommand(FPGAComm_Command *command) {
 	ISR_Guard g;
 	assert(isRPtr(command));
-	if (!current_command)
+	if (!fpga_current_command)
 		issueCommand(command);
 	else {
 		for(auto &c : workqueue)
@@ -307,6 +307,7 @@ static FPGAComm_Command FPGAComm_IRQFetch_Command = {
 	.read_data = &FPGAComm_IRQ_status,
 	.write_data = NULL,
 	.completion = FPGAComm_IRQFetch_Completion,
+	FPGAComm_Command_Private_Init,
 };
 
 static void FPGAComm_IRQFetch_Completion(int result, FPGAComm_Command *command) {
@@ -353,8 +354,8 @@ void SPI_RX_DMA_IRQHandler() {
 		//nss
 		GPIO_SetBits(SPI_NSS_GPIO, SPI_NSS_PIN);
 
-		if (current_command->completion)
-			current_command->completion(-1, current_command);
+		if (fpga_current_command->completion)
+			fpga_current_command->completion(-1, fpga_current_command);
 
 		SPI_I2S_ITConfig(SPI_DEV, SPI_I2S_IT_ERR, DISABLE);
 		DMA_ITConfig(SPI_RX_DMA, DMA_IT_TE | DMA_IT_TC, DISABLE);
@@ -369,22 +370,22 @@ void SPI_RX_DMA_IRQHandler() {
 		DMA_Cmd(SPI_TX_DMA, DISABLE);
 		SPI_I2S_DMACmd(SPI_DEV, SPI_I2S_DMAReq_Tx | SPI_I2S_DMAReq_Rx, DISABLE);
 
-		if(current_command->state == 0) {
-			current_command->state = 1;
+		if(fpga_current_command->state == 0) {
+			fpga_current_command->state = 1;
 
-			setupDMA(current_command->read_data, current_command->write_data, current_command->length);
+			setupDMA(fpga_current_command->read_data, fpga_current_command->write_data, fpga_current_command->length);
 			return;
 		} else {
 			//nss
 			GPIO_SetBits(SPI_NSS_GPIO, SPI_NSS_PIN);
 
-			if (current_command->completion)
-				current_command->completion(0, current_command);
+			if (fpga_current_command->completion)
+				fpga_current_command->completion(0, fpga_current_command);
 		}
 	}
 
 	ISR_Guard g;
-	current_command = NULL;
+	fpga_current_command = NULL;
 	if (!workqueue.empty()) {
 		for(auto &c : workqueue)
 		  assert(isRPtr(c));
@@ -410,11 +411,11 @@ void SPI_IRQHandler() {
 	//nss
 	GPIO_SetBits(SPI_NSS_GPIO, SPI_NSS_PIN);
 
-	if (current_command->completion)
-		current_command->completion(-1, current_command);
+	if (fpga_current_command->completion)
+		fpga_current_command->completion(-1, fpga_current_command);
 
 	ISR_Guard g;
-	current_command = NULL;
+	fpga_current_command = NULL;
 	if (!workqueue.empty()) {
 		for(auto &c : workqueue)
 		  assert(isRPtr(c));

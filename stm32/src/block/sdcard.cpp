@@ -18,7 +18,7 @@
 #include <hw/sd.h>
 
 int card_present = 0;
-static uint32_t timer_handle = 0;
+static uint32_t sdcard_timer_handle = 0;
 enum { CardNotKnown, Card1, Card2, CardHC } card_type = CardNotKnown;
 static int volt_retry = 0;
 union {
@@ -215,7 +215,7 @@ static void SDcard_init_power(void */*unused*/) {
 
 	SDIO_PowerUp();
 
-	timer_handle = Timer_Oneshot(10000, SDcard_init_clock, NULL);
+	sdcard_timer_handle = Timer_Oneshot(10000, SDcard_init_clock, NULL);
 }
 
 static void SDcard_init_clock(void */*unused*/) {
@@ -338,7 +338,7 @@ static void SDcard_init_operation_condition_cmpl(int result, struct SDCommand */
 		if (volt_retry > 10000)
 			return;
 
-		timer_handle = Timer_Oneshot(10000, SDcard_init_operation_condition_timer, NULL);
+		sdcard_timer_handle = Timer_Oneshot(10000, SDcard_init_operation_condition_timer, NULL);
 		return;
 	}
 
@@ -349,7 +349,7 @@ static void SDcard_init_operation_condition_cmpl(int result, struct SDCommand */
 		if (volt_retry > 10000)
 			return;
 
-		timer_handle = Timer_Oneshot(10000, SDcard_init_operation_condition_timer, NULL);
+		sdcard_timer_handle = Timer_Oneshot(10000, SDcard_init_operation_condition_timer, NULL);
 
 		return;
 	}
@@ -632,7 +632,7 @@ void EXTI9_5_IRQHandler() {
 			EXTI_Init(&extiinit);
 
 			//init the card here.
-			timer_handle = Timer_Oneshot(100, SDcard_init_power,
+			sdcard_timer_handle = Timer_Oneshot(100, SDcard_init_power,
 						     NULL);
 			//notify anyone needing to know the card appeared.
 
@@ -646,9 +646,9 @@ void EXTI9_5_IRQHandler() {
 
 			card_present = 0;
 
-			if (timer_handle) {
-				Timer_Cancel(timer_handle);
-				timer_handle = 0;
+			if (sdcard_timer_handle) {
+				Timer_Cancel(sdcard_timer_handle);
+				sdcard_timer_handle = 0;
 			}
 
 			EXTI_InitTypeDef extiinit;
