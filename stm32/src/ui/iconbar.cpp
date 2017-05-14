@@ -795,7 +795,7 @@ public:
       std::string text = ss.str();
       hint.setText(text);
       hint.setPosition(ui::Point
-		       (ui::screen.rect().x + ui::screen.rect().width - text.size()*8,
+		       (mousestate.x - text.size()*8,
 			ui::screen.rect().y + ui::screen.rect().height - 3*8));
       hint.setVisible(true);
     }
