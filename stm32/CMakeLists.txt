@@ -99,7 +99,7 @@ set(MAIN_CSRCS
   src/ui/listbox.cpp
   src/ui/fileselect.cpp
   src/ui/icons.cpp
-  src/ui/settings.cpp
+  src/ui/videosettings.cpp
   src/ui/notify.cpp
   src/bsp/system_stm32f4xx.c
   #  src/bsp/stm32f4xx_crc.c

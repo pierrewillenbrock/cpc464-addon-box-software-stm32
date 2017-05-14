@@ -5,13 +5,13 @@
 #include <fpga/fpga_uploader.hpp>
 #include "controls.hpp"
 #include "input.hpp"
-#include "icons.hpp"
+#include <ui/icons.hpp>
 
 #include <string>
 #include <vector>
 
 namespace ui {
-  class Settings : public ui::Frame, public sigc::trackable {
+  class VideoSettings : public ui::Frame, public sigc::trackable {
   private:
     Input m_hsyncStart;
     Input m_hsyncEnd;
@@ -39,8 +39,8 @@ namespace ui {
     void vblankStartChanged(int value);
     void vblankEndChanged(int value);
   public:
-    Settings();
-    ~Settings();
+    VideoSettings();
+    ~VideoSettings();
     sigc::signal<void> &onClose() { return m_onClose; }
     virtual void setVisible(bool visible);
   };

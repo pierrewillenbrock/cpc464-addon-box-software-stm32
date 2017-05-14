@@ -1,5 +1,5 @@
 
-#include "settings.hpp"
+#include "videosettings.hpp"
 #include <fpga/layout.h>
 
 #include <unistd.h>
@@ -32,7 +32,7 @@ using namespace ui;
 
  */
 
-Settings::Settings()
+VideoSettings::VideoSettings()
   : m_hsyncStart(this)
   , m_hsyncEnd(this)
   , m_hblankStart(this)
@@ -148,74 +148,74 @@ Settings::Settings()
   m_vblankStart.setValueBounds(-312,312);
   m_vblankEnd.setValueBounds(-312,312);
 
-  m_hsyncStart.onValueChanged().connect(sigc::mem_fun(this, &Settings::hsyncStartChanged));
-  m_hsyncEnd.onValueChanged().connect(sigc::mem_fun(this, &Settings::hsyncEndChanged));
-  m_hblankStart.onValueChanged().connect(sigc::mem_fun(this, &Settings::hblankStartChanged));
-  m_hblankEnd.onValueChanged().connect(sigc::mem_fun(this, &Settings::hblankEndChanged));
-  m_vsyncStart.onValueChanged().connect(sigc::mem_fun(this, &Settings::vsyncStartChanged));
-  m_vsyncEnd.onValueChanged().connect(sigc::mem_fun(this, &Settings::vsyncEndChanged));
-  m_vblankStart.onValueChanged().connect(sigc::mem_fun(this, &Settings::vblankStartChanged));
-  m_vblankEnd.onValueChanged().connect(sigc::mem_fun(this, &Settings::vblankEndChanged));
+  m_hsyncStart.onValueChanged().connect(sigc::mem_fun(this, &VideoSettings::hsyncStartChanged));
+  m_hsyncEnd.onValueChanged().connect(sigc::mem_fun(this, &VideoSettings::hsyncEndChanged));
+  m_hblankStart.onValueChanged().connect(sigc::mem_fun(this, &VideoSettings::hblankStartChanged));
+  m_hblankEnd.onValueChanged().connect(sigc::mem_fun(this, &VideoSettings::hblankEndChanged));
+  m_vsyncStart.onValueChanged().connect(sigc::mem_fun(this, &VideoSettings::vsyncStartChanged));
+  m_vsyncEnd.onValueChanged().connect(sigc::mem_fun(this, &VideoSettings::vsyncEndChanged));
+  m_vblankStart.onValueChanged().connect(sigc::mem_fun(this, &VideoSettings::vblankStartChanged));
+  m_vblankEnd.onValueChanged().connect(sigc::mem_fun(this, &VideoSettings::vblankEndChanged));
 
-  m_closeButton.onClick().connect(sigc::mem_fun(this, &Settings::closeClicked));
+  m_closeButton.onClick().connect(sigc::mem_fun(this, &VideoSettings::closeClicked));
 }
 
-Settings::~Settings() {
+VideoSettings::~VideoSettings() {
 }
 
-void Settings::closeClicked() {
+void VideoSettings::closeClicked() {
   m_onClose();
 }
 
-void Settings::hsyncStartChanged(int value) {
+void VideoSettings::hsyncStartChanged(int value) {
   Screen::Options opts = screen.options();
   opts.hsync_start = value;
   screen.setOptions(opts);
 }
 
-void Settings::hsyncEndChanged(int value) {
+void VideoSettings::hsyncEndChanged(int value) {
   Screen::Options opts = screen.options();
   opts.hsync_end = value;
   screen.setOptions(opts);
 }
 
-void Settings::hblankStartChanged(int value) {
+void VideoSettings::hblankStartChanged(int value) {
   Screen::Options opts = screen.options();
   opts.hblank_start = value;
   screen.setOptions(opts);
 }
 
-void Settings::hblankEndChanged(int value) {
+void VideoSettings::hblankEndChanged(int value) {
   Screen::Options opts = screen.options();
   opts.hblank_end = value;
   screen.setOptions(opts);
 }
 
-void Settings::vsyncStartChanged(int value) {
+void VideoSettings::vsyncStartChanged(int value) {
   Screen::Options opts = screen.options();
   opts.vsync_start = value;
   screen.setOptions(opts);
 }
 
-void Settings::vsyncEndChanged(int value) {
+void VideoSettings::vsyncEndChanged(int value) {
   Screen::Options opts = screen.options();
   opts.vsync_end = value;
   screen.setOptions(opts);
 }
 
-void Settings::vblankStartChanged(int value) {
+void VideoSettings::vblankStartChanged(int value) {
   Screen::Options opts = screen.options();
   opts.vblank_start = value;
   screen.setOptions(opts);
 }
 
-void Settings::vblankEndChanged(int value) {
+void VideoSettings::vblankEndChanged(int value) {
   Screen::Options opts = screen.options();
   opts.vblank_end = value;
   screen.setOptions(opts);
 }
 
-void Settings::setVisible(bool visible) {
+void VideoSettings::setVisible(bool visible) {
   Frame::setVisible(visible);
   if (visible) {
     unsigned w = 18;

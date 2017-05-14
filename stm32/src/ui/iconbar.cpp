@@ -4,7 +4,7 @@
 #include "hint.hpp"
 #include "menu.hpp"
 #include "fileselect.hpp"
-#include "settings.hpp"
+#include "videosettings.hpp"
 
 #include <fpga/sprite.hpp>
 #include <fpga/fpga_comm.h>
@@ -800,7 +800,7 @@ public:
 
 static IconBar_Control iconbar_control;
 static ui::FileSelect iconbar_fileselect;
-static ui::Settings iconbar_settings;
+static ui::VideoSettings iconbar_videosettings;
 
 static void IconBar_DeferredEjectDisk(unsigned drive) {
   FDC_EjectDisk(drive);
@@ -886,16 +886,16 @@ void IconBar_SettingsMenu::selectItem(int index) {
     iconbar_settingsmenu.setVisible(false);
     UI_setTopLevelControl(&iconbar_control);
   }
-  if (index == 0) { // insert disk.
+  if (index == 0) {
     iconbar_settingsmenu.setVisible(false);
-    iconbar_settings.setVisible(true);
-    settingsClosedCon = iconbar_settings.onClose().connect(sigc::mem_fun(this, &IconBar_SettingsMenu::settingsClosed));
-    UI_setTopLevelControl(&iconbar_settings);
+    iconbar_videosettings.setVisible(true);
+    settingsClosedCon = iconbar_videosettings.onClose().connect(sigc::mem_fun(this, &IconBar_SettingsMenu::settingsClosed));
+    UI_setTopLevelControl(&iconbar_videosettings);
   }
 }
 
 void IconBar_SettingsMenu::settingsClosed() {
-  iconbar_settings.setVisible(false);
+  iconbar_videosettings.setVisible(false);
   UI_setTopLevelControl(&iconbar_control);
   settingsClosedCon.disconnect();
 }
