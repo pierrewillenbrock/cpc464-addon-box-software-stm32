@@ -18,6 +18,18 @@ Input::Input(Container *parent)
   , m_flags(0)
 {}
 
+Input::Input()
+  : SubControl()
+  , m_value(0)
+  , m_minValue(-0x7ffffff)
+  , m_maxValue(0x7ffffff)
+  , m_accel(0)
+  , m_scroll(0)
+  , m_cursor(0)
+  , m_focused(false)
+  , m_flags(0)
+{}
+
 Input::~Input() {
 }
 
@@ -51,6 +63,7 @@ void Input::setValueBounds(int min, int max) {
 
 void Input::setVisible(bool visible) {
   SubControl::setVisible(visible);
+  assert(m_parent);
   if (m_parent->isMapped()) {
     if (visible)
       m_updownicon = icons.getIcon(Icons::UpDown);
@@ -62,6 +75,7 @@ void Input::setVisible(bool visible) {
 void Input::redraw() {
   if (!m_visible)
     return;
+  assert(m_parent);
   uint32_t *map = m_parent->map();
   unsigned mappitch = m_parent->mapPitch();
   map += m_x + mappitch * m_y;

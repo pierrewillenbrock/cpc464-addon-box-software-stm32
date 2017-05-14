@@ -8,6 +8,10 @@ Label::Label(Container *parent)
   : SubControl(parent)
 {}
 
+Label::Label()
+  : SubControl()
+{}
+
 Label::~Label() {
 }
 
@@ -19,6 +23,7 @@ void Label::setText(std::string const &text) {
 void Label::redraw() {
   if (!m_visible)
     return;
+  assert(m_parent);
   uint32_t *map = m_parent->map();
   unsigned mappitch = m_parent->mapPitch();
   map += m_x + mappitch * m_y;

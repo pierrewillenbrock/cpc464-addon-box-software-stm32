@@ -8,6 +8,10 @@ Button::Button(Container *parent)
   : SubControl(parent)
 {}
 
+Button::Button()
+  : SubControl()
+{}
+
 Button::~Button() {
 }
 
@@ -24,6 +28,7 @@ void Button::setIcon(RefPtr<Icon const> const &icon) {
 void Button::redraw() {
   if (!m_visible)
     return;
+  assert(m_parent);
   uint32_t *map = m_parent->map();
   unsigned mappitch = m_parent->mapPitch();
   map += m_x + mappitch * m_y;

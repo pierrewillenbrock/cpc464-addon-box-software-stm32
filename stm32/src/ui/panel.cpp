@@ -8,6 +8,11 @@ Panel::Panel(Container *parent)
 {
 }
 
+Panel::Panel()
+  : SubControl()
+{
+}
+
 Panel::~Panel() {
 }
 

@@ -23,6 +23,7 @@ namespace ui {
     void recalcNobPosition();
   public:
     ScrollBar(Container *parent);
+    ScrollBar();
     ~ScrollBar();
     void setPosition(unsigned position);
     void setSize(unsigned size);

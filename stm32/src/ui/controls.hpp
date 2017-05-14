@@ -79,6 +79,7 @@ namespace ui {
     Container *m_parent;
   public:
     SubControl(Container *parent);
+    SubControl();
     void setPosition(unsigned x, unsigned y);
     void setSize(unsigned width, unsigned height);
     virtual void setVisible(bool visible);
@@ -88,11 +89,13 @@ namespace ui {
     virtual Rect getGlobalRect();
     virtual void unmapped() {}
     virtual void mapped() {}
+    virtual void setParent(Container *parent);
   };
 
   class Panel : public Container, public SubControl {
   public:
     Panel(Container *parent);
+    Panel();
     ~Panel();
     //in tile position, relative to the parent
     virtual uint32_t *map();
@@ -114,6 +117,7 @@ namespace ui {
     sigc::signal<void> m_onClick;
   public:
     Button(Container *parent);
+    Button();
     ~Button();
     void setText(std::string const &text);
     void setIcon(RefPtr<Icon const> const &icon);
@@ -128,6 +132,7 @@ namespace ui {
     std::string m_text;
   public:
     Label(Container *parent);
+    Label();
     ~Label();
     void setText(std::string const &text);
     virtual void redraw();

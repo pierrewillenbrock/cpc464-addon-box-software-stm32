@@ -29,6 +29,7 @@ namespace ui {
       Numeric = 1, WrapAround = 2
     };
     Input(Container *parent);
+    Input();
     ~Input();
     void setText(std::string const &text);
     void setFlags(unsigned flags);

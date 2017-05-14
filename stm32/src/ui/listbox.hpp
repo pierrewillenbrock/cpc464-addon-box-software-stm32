@@ -23,6 +23,7 @@ namespace ui {
     void scrollChanged(unsigned int /*position*/);
   public:
     ListBox(Container *parent);
+    ListBox();
     ~ListBox();
     void addItem(Item const &it);
     void clearItems();

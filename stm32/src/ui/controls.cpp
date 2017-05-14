@@ -23,6 +23,11 @@ SubControl::SubControl(Container *parent)
 {
 }
 
+SubControl::SubControl()
+  : m_parent(nullptr)
+{
+}
+
 Rect SubControl::getRect() {
   Rect r = {
     (uint16_t)(m_x*8), (uint16_t)(m_y*8),
@@ -56,4 +61,8 @@ void SubControl::setVisible(bool visible) {
   m_parent->fullRedraw();
 }
 
+void SubControl::setParent(Container *parent) {
+  m_parent = parent;
+}
 
+// kate: indent-width 2; indent-mode cstyle;

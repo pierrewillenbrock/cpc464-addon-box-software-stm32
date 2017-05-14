@@ -10,6 +10,11 @@ ScrollBar::ScrollBar(Container *parent)
   , m_pressed(None)
 {}
 
+ScrollBar::ScrollBar()
+  : SubControl()
+  , m_pressed(None)
+{}
+
 ScrollBar::~ScrollBar() {
 }
 
@@ -86,6 +91,7 @@ void ScrollBar::setVertical(bool vertical) {
 void ScrollBar::redraw() {
   if (!m_visible)
     return;
+  assert(m_parent);
   uint32_t *map = m_parent->map();
   unsigned mappitch = m_parent->mapPitch();
   map += m_x + mappitch * m_y;

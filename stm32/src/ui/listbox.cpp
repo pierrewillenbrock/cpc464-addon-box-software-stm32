@@ -14,6 +14,15 @@ ListBox::ListBox(Container *parent)
   m_scrollbar.onChanged().connect(sigc::mem_fun(this, &ListBox::scrollChanged));
 }
 
+ListBox::ListBox()
+  : Panel()
+  , m_scrollbar(this)
+  , m_selected(-1)
+{
+  addChild(&m_scrollbar);
+  m_scrollbar.onChanged().connect(sigc::mem_fun(this, &ListBox::scrollChanged));
+}
+
 ListBox::~ListBox() {
 }
 
@@ -68,6 +77,7 @@ void ListBox::clearItems() {
 void ListBox::redraw() {
   if (!m_visible)
     return;
+  assert(m_parent);
   uint32_t *map = m_parent->map();
   unsigned mappitch = m_parent->mapPitch();
   map += m_x + mappitch * m_y;
