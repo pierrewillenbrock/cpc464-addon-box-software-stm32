@@ -5,6 +5,7 @@
 #include <bsp/stm32f4xx_gpio.h>
 #include <assert.h>
 #include <bits.h>
+#include <hw/led.h>
 
 volatile const char *assert_error_file;
 volatile unsigned int assert_error_line;
@@ -42,17 +43,17 @@ void __assert_func(const char *file, int line, const char *func, const char * ex
 	volatile int delay;
 	int waittime = 500000;
 
-	GPIO_ResetBits(GPIOA, GPIO_Pin_1 | GPIO_Pin_2);
+	GPIO_ResetBits(LED_GPIO, LEDG_PIN | LEDB_PIN);
 
 	while(1)
 	{
-		GPIO_SetBits(GPIOA, GPIO_Pin_3);
+		GPIO_SetBits(LED_GPIO, LEDR_PIN);
 		delay = waittime;
 		while(delay) {
 			delay--;
 		}
 
-		GPIO_ResetBits(GPIOA, GPIO_Pin_3);
+		GPIO_ResetBits(LED_GPIO, LEDR_PIN);
 		delay = waittime;
 		while(delay) {
 			delay--;
