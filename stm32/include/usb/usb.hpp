@@ -6,9 +6,9 @@
 
 #include <refcounted.hpp>
 
+class USBDevice;
 struct USBEndpoint;
 
-//at this point, i'd assume c-code is out.
 struct URB {
 	RefPtr<USBEndpoint> endpoint;
 	struct {  // for Control transactions
@@ -25,9 +25,43 @@ struct URB {
 	enum { Ack, Nak, Stall, Nyet, TXErr, DTErr } result; //for Bulk, Control and IRQ transactions
 	void *userpriv;
 	void (*completion)(int result, URB *u);
+	/** \brief Time for first packet if Bulk or Control, for all packets otherwise
+	 *
+	 * Calculate the time required for processing the packets that need to happen in this frame
+	 * \returns Number of 48MHz PHY Cycles required to process the first packet of this URB
+	 */
+	unsigned int thisFrameTime() const;
+	/** \brief Calculate the time required for processing this URB
+	 * \returns Number of 48MHz PHY Cycles required to process this URB
+	 */
+	unsigned int allPacketTime() const;
+	/** \brief Calculate the time for a SETUP packet
+	 * \returns Number of Bits required
+	 */
+	unsigned int setupBits() const;
+	/** \brief Calculate the time for a STATUS packet
+	 * \returns Number of Bits required
+	 */
+	unsigned int statusBits() const;
+	/** \brief Calculate the time for a DATA packet
+	 * \param length Number of bytes in the packet
+	 * \returns Number of 48MHz PHY Cycles required
+	 */
+	unsigned int dataBits(unsigned int length) const;
+	/** \brief Calculate the time for a SETUP packet
+	 * \returns Number of Bits required
+	 */
+	unsigned int setupTime() const;
+	/** \brief Calculate the time for a STATUS packet
+	 * \returns Number of 48MHz PHY Cycles required
+	 */
+	unsigned int statusTime() const;
+	/** \brief Calculate the time for a DATA packet
+	 * \param length Number of bytes in the packet
+	 * \returns Number of 48MHz PHY Cycles required
+	 */
+	unsigned int dataTime(unsigned int length) const;
 };
-
-class USBDevice;
 
 class USBDriver {
 public:

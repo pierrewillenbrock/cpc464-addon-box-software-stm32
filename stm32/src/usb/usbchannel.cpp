@@ -9,14 +9,9 @@
 
 #include "usbdev.h"
 
-#include <bsp/stm32f4xx.h>
-
-static OTG_Core_TypeDef * const otgc = OTGF_CORE;
-static OTG_Host_TypeDef * const otgh = OTGF_HOST;
-
 #define USB_CHAN_OPERATING_INTMASK					\
-  ( OTG_HCINTMSK_XFRCM | OTG_HCINTMSK_DTERRM | OTG_HCINTMSK_BBERRM |	\
-    OTG_HCINTMSK_FRMORM | OTG_HCINTMSK_ACKM |				\
+  ( OTG_HCINTMSK_DTERRM | OTG_HCINTMSK_BBERRM |				\
+    OTG_HCINTMSK_FRMORM |						\
     OTG_HCINTMSK_TXERRM | OTG_HCINTMSK_NAKM | OTG_HCINTMSK_STALLM )
 
 #define USB_CHAN_DISABLE_INTMASK OTG_HCINTMSK_CHHM
@@ -33,62 +28,71 @@ USBChannel::USBChannel(unsigned index)
 void USBChannel::PTXPossible() {
 	if (!(state == TXWait))
 		return;
+	assert(transfer.state == Transfer::Wait);
 	assert(current_urb);
 	if (current_urb->endpoint->type != USBEndpoint::ISO &&
 	    current_urb->endpoint->type != USBEndpoint::IRQ)
 		return;
-	int required_space = data_remaining;
-	if (required_space > current_urb->endpoint->max_packet_length)
-		required_space = current_urb->endpoint->max_packet_length;
+	int required_space = transfer.packet_remaining;
 	int available_space = (otgh->HPTXSTS & OTG_HPTXSTS_PTXFSAV_MASK) * 4;
 	int available_queue = (otgh->HPTXSTS & OTG_HPTXSTS_PTXQSAV_MASK) >>
 		OTG_HPTXSTS_PTXQSAV_SHIFT;
 	if (available_queue == 0 ||
 	    required_space > available_space)
 		return;
-	LogEvent("USBChannel: writing periodic");
+	LogEvent("USBChannel: writing periodic", this);
 	//we got a queue space and we got space for the data. push a packet.
 	unsigned int nt = required_space >> 2;
 	if (required_space & 3)
 		nt++;
-	uint32_t *d = data;
 	for(unsigned int i = 0; i < nt; i++) {
-		*channeldata = *d++;
+		*channeldata = *transfer.packet_data++;
 	}
-	data_packetsize = nt;
+	if (transfer.packet_remaining > nt << 2) {
+		transfer.packet_handled += nt << 2;
+		transfer.packet_remaining -= nt << 2;
+	} else {
+		transfer.packet_handled += transfer.packet_remaining;
+		transfer.packet_remaining = 0;
+	}
+	transfer.packet_size = nt;
 	state = TXResult;
+	regs->HCINTMSK |= OTG_HCINTMSK_ACKM;
+	transfer.state = Transfer::Result;
 }
-
-volatile uint32_t usb_frame_pos = 0;
 
 void USBChannel::NPTXPossible() {
 	if (!(state == TXWait || state == CtlSetupTXWait ||
 	      state == CtlDataTXWait || state == CtlStatusTXWait))
 		return;
+	assert(transfer.state == Transfer::Wait);
 	assert(current_urb);
 	if (current_urb->endpoint->type != USBEndpoint::Control &&
 	    current_urb->endpoint->type != USBEndpoint::Bulk)
 		return;
-	int required_space = data_remaining;
-	if (required_space > current_urb->endpoint->max_packet_length)
-		required_space = current_urb->endpoint->max_packet_length;
+	int required_space = transfer.packet_remaining;
 	int available_space = (otgc->HNPTXSTS & OTG_HNPTXSTS_NPTXFSAV_MASK) * 4;
 	int available_queue = (otgc->HNPTXSTS & OTG_HNPTXSTS_NPTXQSAV_MASK) >>
 		OTG_HNPTXSTS_NPTXQSAV_SHIFT;
 	if (available_queue == 0 ||
 	    required_space > available_space)
 		return;
-	LogEvent("USBChannel: writing non periodic");
-	usb_frame_pos = otgh->HFNUM;
+	LogEvent("USBChannel: writing non periodic", this);
 	//we got a queue space and we got space for the data. push a packet.
 	unsigned int nt = required_space >> 2;
 	if (required_space & 3)
 		nt++;
-	uint32_t *d = data;
 	for(unsigned int i = 0; i < nt; i++) {
-		*channeldata = *d++;
+		*channeldata = *transfer.packet_data++;
 	}
-	data_packetsize = nt;
+	if (transfer.packet_remaining > nt << 2) {
+		transfer.packet_handled += nt << 2;
+		transfer.packet_remaining -= nt << 2;
+	} else {
+		transfer.packet_handled += transfer.packet_remaining;
+		transfer.packet_remaining = 0;
+	}
+	transfer.packet_size = nt;
 	switch(state) {
 	case TXWait: state = TXResult; break;
 	case CtlSetupTXWait: state = CtlSetupTXResult; break;
@@ -96,30 +100,36 @@ void USBChannel::NPTXPossible() {
 	case CtlStatusTXWait: state = CtlStatusTXResult; break;
 	default: assert(0); break;
 	}
+	regs->HCINTMSK |= OTG_HCINTMSK_ACKM;
+	transfer.state = Transfer::Result;
 }
 
 void USBChannel::RXData(unsigned bcnt, unsigned dpid) {
 	if (!(state == RXWait || state == CtlDataRXWait ||
 	      state == CtlStatusRXWait))
 		return;
-	LogEvent("USBChannel: reading");
+	assert(transfer.state == Transfer::Wait);
+	LogEvent("USBChannel: reading", this);
 	//okay to read bcnt bytes from our fifo!
 	//we assume data is 4 byte aligned so we don't overwrite important
 	//data with doing 4 byte accesses.
 	while(bcnt > 0) {
 		uint32_t d = *channeldata;
 		unsigned c = (bcnt >= 4)?4:bcnt;//size of this uint32_t copy
-		if (data_remaining >= c) {
-			*data++ = d;
-			data_remaining -= c;
-		} else if (data_remaining > 0) {
-			*data++ = d;
-			data_remaining = 0;
+		if (transfer.packet_remaining >= c) {
+			*transfer.packet_data++ = d;
+			transfer.packet_handled += c;
+			transfer.packet_remaining -= c;
+		} else if (transfer.packet_remaining > 0) {
+			*transfer.packet_data++ = d;
+			transfer.packet_handled += transfer.packet_remaining;
+			transfer.packet_remaining = 0;
 		}
 		bcnt -= c;
 	}
-	regs->HCCHAR = regs->HCCHAR;//trigger advance of channel state
+	regs->HCINTMSK |= OTG_HCINTMSK_ACKM;
 	current_urb->endpoint->dataToggleIN = dpid != 0x2;
+	transfer.state = Transfer::Result;
 }
 
 void USBChannel::INT() {
@@ -134,7 +144,9 @@ void USBChannel::INT() {
 	   (HCCHAR & 0xc0000000) == 0x40000000 does not appear to happen.
 	 */
 	uint32_t hcint = regs->HCINT & regs->HCINTMSK;
-	LogEvent("USBChannel::INT()");
+	LogEvent("USBChannel::INT()", this);
+	if (hcint == 0)
+		LogEvent("USBChannel::INT: no events", this);
 	if (!(regs->HCCHAR & OTG_HCCHAR_CHENA)) {
 		//enumerate all the states+event combos where we know that
 		//the hardware disables the channel
@@ -142,18 +154,21 @@ void USBChannel::INT() {
 		    (state == TXResult || state == CtlSetupTXResult ||
 		     state == CtlDataTXResult || state == CtlDataRXWait ||
 		     state == CtlStatusTXResult || state == CtlStatusRXWait ||
-		     state == RXWait)) {
+		     state == RXWait) && (transfer.state == Transfer::Result)) {
 		} else if ((hcint & OTG_HCINT_ACK) &&
 		    (state == TXResult || state == CtlSetupTXResult ||
 		     state == CtlDataTXResult || state == CtlDataRXWait ||
 		     state == CtlStatusTXResult || state == CtlStatusRXWait ||
-		     state == RXWait)) {
+		     state == RXWait) && (transfer.state == Transfer::Result)) {
 		} else if ((regs->HCINT & OTG_HCINT_CHH) &&
-			   (state == Disabling || state == DisablingPeriodic ||
+			   (state == Disabling ||
 			    state == DisablingTX ||
 			    state == DisablingCtlSetupTX ||
 			    state == DisablingCtlDataTX ||
-			    state == DisablingCtlStatusTX)) {
+			    state == DisablingCtlDataRX ||
+			    state == DisablingCtlStatusTX ||
+			    state == DisablingCtlStatusRX) &&
+			  (transfer.state == Transfer::Disabling)) {
 		} else {
 			assert(0);
 		}
@@ -168,15 +183,27 @@ void USBChannel::INT() {
 		case CtlSetupTXResult:
 		case CtlStatusTXResult:
 		case CtlDataTXResult:
-			LogEvent("USBChannel: ACK in *TXResult");
+			LogEvent("USBChannel: ACK in *TXResult", this);
+			assert(transfer.state == Transfer::Result);
 			//this is used for all TX transmissions.
-			data += data_packetsize;
-			if (data_remaining <= (data_packetsize << 2)) {
-				data_remaining = 0;
-				data_packetsize = 0;
+			transfer.data += transfer.packet_handled;
+			if (transfer.data_remaining > transfer.packet_handled) {
+				transfer.data_handled += transfer.packet_handled;
+				transfer.data_remaining -= transfer.packet_handled;
 			} else {
-				data_remaining -= data_packetsize << 2;
-				data_packetsize = 0;
+				transfer.data_handled += transfer.data_remaining;
+				transfer.data_remaining = 0;
+			}
+			transfer.packet_handled = 0;
+			transfer.packet_count--;
+			if (transfer.packet_count > 0) {
+				//setup for next packet
+				transfer.packet_handled = 0;
+				transfer.packet_remaining = transfer.data_remaining;
+				if (transfer.packet_remaining > transfer.max_packet_length)
+					transfer.packet_remaining = transfer.max_packet_length;
+				transfer.packet_data = (uint32_t*) transfer.data;
+
 				switch(state) {
 				case TXResult: state = TXWait; break;
 				case CtlSetupTXResult: state = CtlSetupTXWait; break;
@@ -184,20 +211,65 @@ void USBChannel::INT() {
 				case CtlDataTXResult: state = CtlDataTXWait; break;
 				default: assert(0); break;
 				}
+				transfer.state = Transfer::Wait;
 				switch(current_urb->endpoint->type) {
 				case USBEndpoint::Control:
 				case USBEndpoint::Bulk:
-					otgc->GINTMSK |= OTG_GINTMSK_NPTXFEM; break;
+					               otgc->GINTMSK |= OTG_GINTMSK_NPTXFEM; break;
 				case USBEndpoint::ISO:
 				case USBEndpoint::IRQ:
-					otgc->GINTMSK |= OTG_GINTMSK_PTXFEM; break;
+					               otgc->GINTMSK |= OTG_GINTMSK_PTXFEM; break;
 				}
+			} else {
+				//done with this transfer
+				//update data pointer if needed, or do this during XFRC?
+				if (state == TXResult || state == CtlDataTXResult) {
+					data_urb += transfer.data_handled;
+					if (data_urb_remaining > transfer.data_handled) {
+						data_urb_remaining -= transfer.data_handled;
+					} else {
+						data_urb_remaining = 0;
+					}
+					transfer.data_handled = 0;
+					//rest is handled during XFRC
+				}
+				regs->HCINTMSK |= OTG_HCINTMSK_XFRCM;
 			}
+			regs->HCINTMSK &= ~OTG_HCINTMSK_ACKM;
+
 			break;
 		case RXWait:
 		case CtlDataRXWait:
 		case CtlStatusRXWait:
-			//handled automatically.
+			LogEvent("USBChannel: ACK in *RXResult", this);
+			assert(transfer.state == Transfer::Result);
+			//this is used for all RX transmissions.
+			transfer.data += transfer.packet_handled;
+			if (transfer.data_remaining > transfer.packet_handled) {
+				transfer.data_handled += transfer.packet_handled;
+				transfer.data_remaining -= transfer.packet_handled;
+			} else {
+				transfer.data_handled += transfer.data_remaining;
+				transfer.data_remaining = 0;
+			}
+			transfer.packet_handled = 0;
+			transfer.packet_count--;
+			if (transfer.packet_count > 0 && transfer.packet_remaining == 0) {
+				//setup for next packet
+				transfer.packet_handled = 0;
+				transfer.packet_remaining = transfer.data_remaining;
+				if (transfer.packet_remaining > transfer.max_packet_length)
+					transfer.packet_remaining = transfer.max_packet_length;
+				transfer.packet_data = (uint32_t*) transfer.data;
+
+				transfer.state = Transfer::Wait;
+			} else {
+				//done with this transfer
+				//rest is handled during XFRC
+				regs->HCINTMSK |= OTG_HCINTMSK_XFRCM;
+			}
+			regs->HCCHAR = regs->HCCHAR;//trigger advance of channel state
+			regs->HCINTMSK &= ~OTG_HCINTMSK_ACKM;
 			break;
 		default: assert(0); break;
 		}
@@ -216,56 +288,97 @@ void USBChannel::INT() {
 		//need to regenerate TX toggle status from register, i think.
 		switch(state) {
 		case RXWait:
-			LogEvent("USBChannel: NAK in RXWait");
-			//only BULK and IRQ(and Control above) can generate NAK
+			LogEvent("USBChannel: NAK in RXWait", this);
+			//reset packet information
+			transfer.packet_data = (uint32_t*)transfer.data;
+			transfer.packet_remaining = transfer.data_remaining;
+			if (transfer.packet_remaining > transfer.max_packet_length)
+				transfer.packet_remaining = transfer.max_packet_length;
+			transfer.packet_handled = 0;
+			//only BULK and IRQ(and Control below) can generate NAK
 			if (current_urb->endpoint->type == USBEndpoint::IRQ) {
 				//we need to shutdown the channel here.
 				regs->HCINT = OTG_HCINT_CHH;
 				regs->HCCHAR |= OTG_HCCHAR_CHDIS;
 				regs->HCINTMSK = USB_CHAN_DISABLE_INTMASK;
-				state = DisablingPeriodic;
+				state = Disabling;
+				assert(transfer.state != Transfer::Idle &&
+					transfer.state != Transfer::Disabling);
+				USB_frameChannelTime -= transfer.transfer_time;
+				transfer.state = Transfer::Disabling;
+				current_urb = NULL;
 			} else {
 				//bulk read just keeps waiting?
 				regs->HCCHAR = regs->HCCHAR;//trigger advance of channel state
 			}
 			break;
 		case CtlDataRXWait:
-			LogEvent("USBChannel: NAK in CtlDataRXWait");
-			//doINTransfer(data, data_remaining);//this seems to work. todo: check if we can get away with just the state advance.
+			LogEvent("USBChannel: NAK in CtlDataRXWait", this);
+			//reset packet information
+			transfer.packet_data = (uint32_t*)transfer.data;
+			transfer.packet_remaining = transfer.data_remaining;
+			if (transfer.packet_remaining > transfer.max_packet_length)
+				transfer.packet_remaining = transfer.max_packet_length;
+			transfer.packet_handled = 0;
 			regs->HCCHAR = regs->HCCHAR;//trigger advance of channel state
 			break;
 		case CtlStatusRXWait:
-			LogEvent("USBChannel: NAK in CtlStatusRXWait");
+			LogEvent("USBChannel: NAK in CtlStatusRXWait", this);
+			//reset packet information
+			transfer.packet_data = (uint32_t*)transfer.data;
+			transfer.packet_remaining = transfer.data_remaining;
+			if (transfer.packet_remaining > transfer.max_packet_length)
+				transfer.packet_remaining = transfer.max_packet_length;
+			transfer.packet_handled = 0;
 			//status is an empty DATA1 transfer
-			//doINTransfer(u->buffer, 0);//this seems to work. todo: check if we can get away with just the state advance.
 			regs->HCCHAR = regs->HCCHAR;//trigger advance of channel state
 			break;
 		case CtlSetupTXResult:
-			LogEvent("USBChannel: NAK in CtlStatusTXResult");
+			LogEvent("USBChannel: NAK in CtlStatusTXResult", this);
 			current_urb->endpoint->dataToggleOUT =
 				((regs->HCTSIZ & 0x60000000) >> 29) != 0x2;
 			state = DisablingCtlSetupTX;
-			data_packetsize = 0;
+			assert(transfer.state != Transfer::Idle &&
+				transfer.state != Transfer::Disabling);
+			USB_frameChannelTime -= transfer.transfer_time;
+			transfer.state = Transfer::Disabling;
+			transfer.packet_size = 0;
 			regs->HCINT = OTG_HCINT_CHH;
 			regs->HCCHAR |= OTG_HCCHAR_CHDIS;
 			regs->HCINTMSK = USB_CHAN_DISABLE_INTMASK;
 			break;
 		case CtlDataTXResult:
-			LogEvent("USBChannel: NAK in CtlStatusTXResult");
+			LogEvent("USBChannel: NAK in CtlDataTXResult", this);
 			current_urb->endpoint->dataToggleOUT =
 				((regs->HCTSIZ & 0x60000000) >> 29) != 0x2;
 			state = DisablingCtlDataTX;
-			data_packetsize = 0;
+			assert(transfer.state != Transfer::Idle &&
+				transfer.state != Transfer::Disabling);
+			assert(transfer.state != Transfer::Idle &&
+				transfer.state != Transfer::Disabling);
+			USB_frameChannelTime -= transfer.transfer_time;
+			transfer.state = Transfer::Disabling;
+			data_urb += transfer.data_handled;
+			if (data_urb_remaining >= transfer.data_handled)
+				data_urb_remaining -= transfer.data_handled;
+			else
+				data_urb_remaining = 0;
+			transfer.data_handled = 0;
+			transfer.packet_size = 0;
 			regs->HCINT = OTG_HCINT_CHH;
 			regs->HCCHAR |= OTG_HCCHAR_CHDIS;
 			regs->HCINTMSK = USB_CHAN_DISABLE_INTMASK;
 			break;
 		case CtlStatusTXResult:
-			LogEvent("USBChannel: NAK in CtlStatusTXResult");
+			LogEvent("USBChannel: NAK in CtlStatusTXResult", this);
 			current_urb->endpoint->dataToggleOUT =
 				((regs->HCTSIZ & 0x60000000) >> 29) != 0x2;
 			state = DisablingCtlStatusTX;
-			data_packetsize = 0;
+			assert(transfer.state != Transfer::Idle &&
+				transfer.state != Transfer::Disabling);
+			USB_frameChannelTime -= transfer.transfer_time;
+			transfer.state = Transfer::Disabling;
+			transfer.packet_size = 0;
 			regs->HCINT = OTG_HCINT_CHH;
 			regs->HCCHAR |= OTG_HCCHAR_CHDIS;
 			regs->HCINTMSK = USB_CHAN_DISABLE_INTMASK;
@@ -276,72 +389,116 @@ void USBChannel::INT() {
 	if (hcint & OTG_HCINT_XFRC) {
 		hcint &= ~OTG_HCINT_XFRC;
 		regs->HCINT = OTG_HCINT_XFRC;
+		assert(transfer.state == Transfer::Result);
+		USB_frameChannelTime -= transfer.transfer_time;
+		transfer.state = Transfer::Idle;
+
 		//transfer done.
 		switch(state) {
 		case TXResult:
-			LogEvent("USBChannel: XFRC in TXResult");
+			LogEvent("USBChannel: XFRC in TXResult", this);
 			//done.
 			//the channel disabled itself at this point.
 			current_urb->endpoint->dataToggleOUT =
 				((regs->HCTSIZ & 0x60000000) >> 29) != 0x2;
 			regs->HCINTMSK = USB_CHAN_IDLE_INTMASK;
-			if (current_urb->endpoint->type != USBEndpoint::IRQ &&
-			    current_urb->endpoint->type != USBEndpoint::ISO) {
+			data_urb += transfer.data_handled;
+			if (data_urb_remaining >= transfer.data_handled)
+				data_urb_remaining -= transfer.data_handled;
+			else
+				data_urb_remaining = 0;
+			transfer.data_handled = 0;
+			if (data_urb_remaining == 0) {
+				//done with the URB.
 				state = Unused;
 				current_urb = NULL;
 				u->result = URB::Ack;
 				u->completion(0, u);
-			} else {
-				state = PeriodicWait;
-				u->result = URB::Ack;
-				u->completion(0, u);
-			}
+			} else
+				state = TXWaitSOF;
 			break;
 		case CtlSetupTXResult:
-			LogEvent("USBChannel: XFRC in CtlSetupTXResult");
+			LogEvent("USBChannel: XFRC in CtlSetupTXResult", this);
 			current_urb->endpoint->dataToggleOUT = true;
 			//the channel disabled itself at this point.
 			if (u->buffer_len > 0) {
 				if (u->setup.bmRequestType & 0x80) {
 					//that's IN
-					state = CtlDataRXWait;
-					doINTransfer(u->buffer, u->buffer_len);
+					if(continueBulkTransfer(true, false)) {
+						state = CtlDataRXWait;
+					} else {
+						state = CtlDataRXWaitSOF;
+					}
 				} else {
-					state = CtlDataTXWait;
-					doOUTTransfer(u->buffer, u->buffer_len);
+					if(continueBulkTransfer(false, false)) {
+						//that's IN
+						state = CtlDataTXWait;
+					} else {
+						state = CtlDataTXWaitSOF;
+					}
 				}
 			} else {
 				if (u->setup.bmRequestType & 0x80) {
-					state = CtlStatusTXWait;
-					doOUTTransfer(u->buffer, 0);
+					if (current_urb->dataTime(0) <= USB_frameTimeRemaining()) {
+						state = CtlStatusTXWait;
+						doOUTTransfer(transfer.data, 0, true);
+					} else
+						state = CtlStatusTXWaitSOF;
 				} else {
-					state = CtlStatusRXWait;
-					doINTransfer(u->buffer, 0);
+					if (current_urb->dataTime(0) <= USB_frameTimeRemaining()) {
+						state = CtlStatusRXWait;
+						doINTransfer(transfer.data, 0, true);
+					} else
+						state = CtlStatusRXWaitSOF;
 				}
 			}
 			break;
 		case CtlDataTXResult:
-			LogEvent("USBChannel: XFRC in CtlDataTXResult");
-			current_urb->endpoint->dataToggleOUT =
+			LogEvent("USBChannel: XFRC in CtlDataTXResult", this);
+			data_urb += transfer.data_handled;
+			if (data_urb_remaining >= transfer.data_handled)
+				data_urb_remaining -= transfer.data_handled;
+			else
+				data_urb_remaining = 0;
+			transfer.data_handled = 0;
+			if (data_urb_remaining == 0) {
+				current_urb->endpoint->dataToggleOUT =
 				((regs->HCTSIZ & 0x60000000) >> 29) != 0x2;
-			//the channel disabled itself at this point.
-			state = CtlStatusRXWait;
-			doINTransfer(u->buffer, 0);
+				//the channel disabled itself at this point.
+				if (current_urb->dataTime(0) <= USB_frameTimeRemaining()) {
+					state = CtlStatusRXWait;
+					doINTransfer(transfer.data, 0, true);
+				} else
+					state = CtlStatusRXWaitSOF;
+			} else
+				state = CtlDataTXWaitSOF;
 			break;
 		case CtlDataRXWait:
-			LogEvent("USBChannel: XFRC in CtlDataRXWait");
-			//the channel disabled itself at this point.
-			state = CtlStatusTXWait;
-			u->buffer_received = u->buffer_len - data_remaining;
-			doOUTTransfer(u->buffer, 0);
+			LogEvent("USBChannel: XFRC in CtlDataRXWait", this);
+			data_urb += transfer.data_handled;
+			if (data_urb_remaining >= transfer.data_handled)
+				data_urb_remaining -= transfer.data_handled;
+			else
+				data_urb_remaining = 0;
+			transfer.data_handled = 0;
+			if (data_urb_remaining == 0) {
+				//the channel disabled itself at this point.
+				u->buffer_received = u->buffer_len - data_urb_remaining;
+				if (current_urb->dataTime(0) <= USB_frameTimeRemaining()) {
+					state = CtlStatusTXWait;
+					doOUTTransfer(transfer.data, 0, true);
+				} else
+					state = CtlStatusTXWaitSOF;
+			} else
+				state = CtlDataRXWaitSOF;
 			break;
 		case CtlStatusTXResult:
-			LogEvent("USBChannel: XFRC in CtlStatusTXResult");
+			LogEvent("USBChannel: XFRC in CtlStatusTXResult", this);
 			current_urb->endpoint->dataToggleOUT =
 				((regs->HCTSIZ & 0x60000000) >> 29) != 0x2;
 			//fall through
 		case CtlStatusRXWait:
-			LogEvent("USBChannel: XFRC in CtlStatusRXWait");
+			LogEvent("USBChannel: XFRC in CtlStatusRXWait", this);
 			//the channel disabled itself at this point.
 			state = Unused;
 			current_urb = NULL;
@@ -349,35 +506,48 @@ void USBChannel::INT() {
 			u->completion(0, u);
 			break;
 		case RXWait:
-			LogEvent("USBChannel: XFRC in RXWait");
+			LogEvent("USBChannel: XFRC in RXWait", this);
+			data_urb += transfer.data_handled;
+			if (data_urb_remaining >= transfer.data_handled)
+				data_urb_remaining -= transfer.data_handled;
+			else
+				data_urb_remaining = 0;
+			transfer.data_handled = 0;
 			//the channel disabled itself at this point.
 			regs->HCINTMSK = USB_CHAN_IDLE_INTMASK;
-			u->buffer_received = u->buffer_len - data_remaining;
-			if (current_urb->endpoint->type != USBEndpoint::IRQ &&
-			    current_urb->endpoint->type != USBEndpoint::ISO) {
+			if (data_urb_remaining == 0) {
+				u->buffer_received = u->buffer_len - data_urb_remaining;
 				state = Unused;
 				current_urb = NULL;
 				u->result = URB::Ack;
 				u->completion(0, u);
-			} else {
-				state = PeriodicWait;
-				u->result = URB::Ack;
-				u->completion(0, u);
-			}
+			} else
+				state = RXWaitSOF;
 			break;
 		case TXWait: //failed for some reason. keep the chain going.
 		case CtlSetupTXWait:
 		case CtlDataTXWait:
 		case CtlStatusTXWait:
 			assert(0);
-			LogEvent("USBChannel: XFRC in *TXWait");
+			LogEvent("USBChannel: XFRC in *TXWait", this);
 			regs->HCINT = OTG_HCINT_CHH;
 			regs->HCCHAR |= OTG_HCCHAR_CHDIS;
 			regs->HCINTMSK = USB_CHAN_DISABLE_INTMASK;
 			state = Disabling;
-			u->buffer_received = u->buffer_len - data_remaining;
+			assert(transfer.state != Transfer::Idle &&
+				transfer.state != Transfer::Disabling);
+			USB_frameChannelTime -= transfer.transfer_time;
+			transfer.state = Transfer::Disabling;
+			data_urb += transfer.data_handled;
+			if (data_urb_remaining >= transfer.data_handled)
+				data_urb_remaining -= transfer.data_handled;
+			else
+				data_urb_remaining = 0;
+			transfer.data_handled = 0;
+			//cannot automatically recover from this, so communicate URB error
+			u->buffer_received = u->buffer_len - data_urb_remaining;
 			current_urb = NULL;
-			u->result = URB::Ack;
+			u->result = URB::TXErr;
 			u->completion(1, u);
 			break;
 		default: assert(0); break;
@@ -385,25 +555,63 @@ void USBChannel::INT() {
 	}
 	if (hcint & OTG_HCINT_DTERR) {
 		//must disable the channel when getting DTERR (stm32f4 34.17.4 Halting a channel)
-		LogEvent("USBChannel: DTERR");
+		LogEvent("USBChannel: DTERR", this);
 		hcint &= ~OTG_HCINT_DTERR;
 		regs->HCINT = OTG_HCINT_DTERR;
 		regs->HCINT = OTG_HCINT_CHH;
 		regs->HCCHAR |= OTG_HCCHAR_CHDIS;
 		regs->HCINTMSK = USB_CHAN_DISABLE_INTMASK;
+		switch (state) {
+		case TXResult:
+		case TXWait:
+		case RXWait:
+		case CtlDataTXWait:
+		case CtlDataTXResult:
+		case CtlDataRXWait:
+			data_urb += transfer.data_handled;
+			if (data_urb_remaining >= transfer.data_handled)
+				data_urb_remaining -= transfer.data_handled;
+			else
+				data_urb_remaining = 0;
+			break;
+			transfer.data_handled = 0;
+		default: break;
+		}
 		state = Disabling;
-		u->buffer_received = u->buffer_len - data_remaining;
+		assert(transfer.state != Transfer::Idle &&
+			transfer.state != Transfer::Disabling);
+		USB_frameChannelTime -= transfer.transfer_time;
+		transfer.state = Transfer::Disabling;
+		//cannot automatically recover from this, so communicate URB error
+		u->buffer_received = u->buffer_len - data_urb_remaining;
 		current_urb = NULL;
 		u->result = URB::DTErr;
 		u->completion(1, u);
 	}
 	if (hcint & OTG_HCINT_FRMOR) {
-		hcint &= ~OTG_HCINT_FRMOR;
+		hcint &= ~OTG_HCINT_FRMOR;//todo: this keeps happening, need to estimate transaction time before commiting one and check if it fits into the frame. also need to put the periodic urbs in a (priority-)queue instead of having them eat up channels that idle.
+		LogEvent("USBChannel: FRMOR", this);
+		//so, plan:
+		// when an urb gets submitted:
+		//  * conservative estimate of the time needed for a given urbs
+		//  * if there is not enough time in the current frame, given all the active channels and urbs waiting in queues, put it into the
+		//    queue be done. there is a queue for periodic and non-periodics.
+		//  * if there is a free channel, directly occupy it. otherwise, put it in the queue for the current channel.
+		// when a channels finishes work:
+		//  * trigger the queue emptying mechanism, which then looks at an urb out of the periodic, then non-periodic queue. it checks if
+		//    there is still enough time left to do the transaction, and if so occopys a channel
+		// on start of frame:
+		//  * the queue emptying mechanism is triggered for all channels.
+		// tracking needed:
+		//  * urbs need to gain a frame time estimate
+		//  * usb needs to track the sum of all channels time use.
+		// the "is time left" decision is based on the sum of all channels and current usb frame time from the device.
 		assert(0);
 	}
 	if (hcint & OTG_HCINT_BBERR) {
 		//must disable the channel when getting BBERR (stm32f4 34.17.4 Halting a channel)
 		hcint &= ~OTG_HCINT_BBERR;
+		LogEvent("USBChannel: BBERR", this);
 		assert(0);
 	}
 	if (hcint & OTG_HCINT_TXERR) {
@@ -412,27 +620,71 @@ void USBChannel::INT() {
 		regs->HCINT = OTG_HCINT_TXERR;
 		switch(state) {
 		case CtlSetupTXResult:
-			LogEvent("USBChannel: TXERR in CtlSetupTXResult");
+			LogEvent("USBChannel: TXERR in CtlSetupTXResult", this);
 			state = DisablingCtlSetupTX;
+			assert(transfer.state != Transfer::Idle &&
+				transfer.state != Transfer::Disabling);
+			USB_frameChannelTime -= transfer.transfer_time;
+			transfer.state = Transfer::Disabling;
 			break;
 		case CtlDataTXResult:
-			LogEvent("USBChannel: TXERR in CtlDataTXResult");
+			LogEvent("USBChannel: TXERR in CtlDataTXResult", this);
 			state = DisablingCtlDataTX;
+			assert(transfer.state != Transfer::Idle &&
+				transfer.state != Transfer::Disabling);
+			USB_frameChannelTime -= transfer.transfer_time;
+			transfer.state = Transfer::Disabling;
+			data_urb += transfer.data_handled;
+			if (data_urb_remaining >= transfer.data_handled)
+				data_urb_remaining -= transfer.data_handled;
+			else
+				data_urb_remaining = 0;
+			transfer.data_handled = 0;
+			break;
+		case CtlDataRXWait:
+			LogEvent("USBChannel: TXERR in CtlDataRXWait", this);
+			state = DisablingCtlDataRX;
+			assert(transfer.state != Transfer::Idle &&
+				transfer.state != Transfer::Disabling);
+			USB_frameChannelTime -= transfer.transfer_time;
+			transfer.state = Transfer::Disabling;
+			data_urb += transfer.data_handled;
+			if (data_urb_remaining >= transfer.data_handled)
+				data_urb_remaining -= transfer.data_handled;
+			else
+				data_urb_remaining = 0;
+			transfer.data_handled = 0;
 			break;
 		case CtlStatusTXResult:
-			LogEvent("USBChannel: TXERR in CtlStatusTXResult");
+			LogEvent("USBChannel: TXERR in CtlStatusTXResult", this);
 			state = DisablingCtlStatusTX;
+			assert(transfer.state != Transfer::Idle &&
+				transfer.state != Transfer::Disabling);
+			USB_frameChannelTime -= transfer.transfer_time;
+			transfer.state = Transfer::Disabling;
+			break;
+		case CtlStatusRXWait:
+			LogEvent("USBChannel: TXERR in CtlStatusRXWait", this);
+			state = DisablingCtlStatusRX;
+			assert(transfer.state != Transfer::Idle &&
+				transfer.state != Transfer::Disabling);
+			USB_frameChannelTime -= transfer.transfer_time;
+			transfer.state = Transfer::Disabling;
 			break;
 		case RXWait:
-			LogEvent("USBChannel: TXERR in RXWait");
+			LogEvent("USBChannel: TXERR in RXWait", this);
 			state = Disabling;
+			assert(transfer.state != Transfer::Idle &&
+				transfer.state != Transfer::Disabling);
+			USB_frameChannelTime -= transfer.transfer_time;
+			transfer.state = Transfer::Disabling;
 			current_urb = NULL;
 			u->result = URB::TXErr;
 			u->completion(1, u);
 			break;
 		default: assert(0); break;
 		}
-		data_packetsize = 0;
+		transfer.packet_size = 0;
 		regs->HCINT = OTG_HCINT_CHH;
 		regs->HCCHAR |= OTG_HCCHAR_CHDIS;
 		regs->HCINTMSK = USB_CHAN_DISABLE_INTMASK;
@@ -449,22 +701,26 @@ void USBChannel::INT() {
 		case CtlSetupTXResult:
 		case CtlDataTXResult:
 		case CtlStatusTXResult:
-			LogEvent("USBChannel: STALL in Ctl*RXWait/*TXResult");
+		case RXWait:
+			LogEvent("USBChannel: STALL in Ctl*RXWait/*TXResult or RXWait", this);
 			regs->HCINT = OTG_HCINT_CHH;
 			regs->HCCHAR |= OTG_HCCHAR_CHDIS;
 			regs->HCINTMSK = USB_CHAN_DISABLE_INTMASK;
 			state = Disabling;
+			assert(transfer.state != Transfer::Idle &&
+				transfer.state != Transfer::Disabling);
+			USB_frameChannelTime -= transfer.transfer_time;
+			transfer.state = Transfer::Disabling;
+			data_urb += transfer.data_handled;
+			if (data_urb_remaining >= transfer.data_handled)
+				data_urb_remaining -= transfer.data_handled;
+			else
+				data_urb_remaining = 0;
+			transfer.data_handled = 0;
 			u->result = URB::Stall;
-			u->buffer_received = u->buffer_len - data_remaining;
+			u->buffer_received = u->buffer_len - data_urb_remaining;
 			current_urb = NULL;
 			u->completion(1, u);
-			break;
-		case RXWait:
-			LogEvent("USBChannel: STALL in RXWait");
-			//only BULK and IRQ(and Control) can generate STALL
-			if (current_urb->endpoint->type == USBEndpoint::IRQ) {
-				state = PeriodicWait;
-			}
 			break;
 		default: assert(0); break;
 		}
@@ -474,33 +730,60 @@ void USBChannel::INT() {
 		hcint &= ~OTG_HCINT_CHH;
 		regs->HCINT = OTG_HCINT_CHH;
 		regs->HCINTMSK = USB_CHAN_IDLE_INTMASK;
+		assert(transfer.state == Transfer::Disabling);
+		transfer.state = Transfer::Idle;
+		LogEvent("USBChannel: Channel halted", this);
 		switch(state) {
 		case Disabling:
 			state = Unused;
-			break;
-		case DisablingPeriodic:
-			state = PeriodicWait;
-			break;
-		case DisablingTX:
-			state = TXWait;
-			doOUTTransfer(data, data_remaining);
+			assert(!current_urb);
 			break;
 		case DisablingCtlSetupTX:
-			state = CtlSetupTXWait;
-			doOUTTransfer(data, data_remaining);
+			if (current_urb->setupTime() <= USB_frameTimeRemaining()) {
+				state = CtlSetupTXWait;
+				doSETUPTransfer();
+			} else
+				state = CtlSetupTXWaitSOF;
 			break;
 		case DisablingCtlDataTX:
-			state = CtlDataTXWait;
-			doOUTTransfer(data, data_remaining);
+			if (continueBulkTransfer(false, false))
+				state = CtlDataTXWait;
+			else
+				state = CtlDataTXWaitSOF;
+			break;
+		case DisablingCtlDataRX:
+			if (continueBulkTransfer(true, false))
+				state = CtlDataRXWait;
+			else
+				state = CtlDataRXWaitSOF;
 			break;
 		case DisablingCtlStatusTX:
-			state = CtlStatusTXWait;
-			doOUTTransfer(data, data_remaining);
+			if (current_urb->dataTime(0) <= USB_frameTimeRemaining()) {
+				state = CtlStatusTXWait;
+				doOUTTransfer(transfer.data, 0, true);
+			} else
+				state = CtlStatusTXWaitSOF;
+			break;
+		case DisablingCtlStatusRX:
+			if (current_urb->dataTime(0) <= USB_frameTimeRemaining()) {
+				state = CtlStatusRXWait;
+				doINTransfer(transfer.data, 0, true);
+			} else
+				state = CtlStatusRXWaitSOF;
+			break;
+		case DisablingTX:
+			if (continueBulkTransfer(false, false))
+				state = TXWait;
+			else
+				state = TXWaitSOF;
 			break;
 		default: assert(0); break;
 		}
+	}
+	{
+		ISR_Guard g;
 		if (state == Unused) {
-			otgh->HAINTMSK &= ~(1 << index);
+			         otgh->HAINTMSK &= ~(1 << index);
 			//and now look at the queue.
 			URB *u = USB_getNextURB();
 			if (u)
@@ -511,11 +794,97 @@ void USBChannel::INT() {
 	assert(hcint == 0);
 }
 
+void USBChannel::SOF() {
+	switch(state) {
+	case CtlSetupTXWaitSOF:
+		if (current_urb->setupTime() <= USB_frameTimeRemaining()) {
+			LogEvent("USBChannel: SOF for CtlSetupTXWait", this);
+			state = CtlSetupTXWait;
+			doSETUPTransfer();
+		} else
+			LogEvent("USBChannel: SOF frame full for CtlSetupTXWait", this);
+		break;
+	case CtlDataRXWaitSOF:
+		if (continueBulkTransfer(true, false)) {
+			LogEvent("USBChannel: SOF for CtlDataRXWait", this);
+			state = CtlDataRXWait;
+		} else
+			LogEvent("USBChannel: SOF frame full for CtlDataRXWait", this);
+		break;
+	case CtlDataTXWaitSOF:
+		if (continueBulkTransfer(false, false)) {
+			LogEvent("USBChannel: SOF for CtlDataTXWait", this);
+			state = CtlDataTXWait;
+		} else
+			LogEvent("USBChannel: SOF frame full for CtlDataTXWait", this);
+		break;
+	case CtlStatusTXWaitSOF:
+		if (current_urb->dataTime(0) <= USB_frameTimeRemaining()) {
+			LogEvent("USBChannel: SOF for CtlStatusTXWait", this);
+			state = CtlStatusTXWait;
+			doOUTTransfer(transfer.data, 0, true);
+		} else
+			LogEvent("USBChannel: SOF frame full for CtlStatusTXWait", this);
+		break;
+	case CtlStatusRXWaitSOF:
+		if (current_urb->dataTime(0) <= USB_frameTimeRemaining()) {
+			LogEvent("USBChannel: SOF for CtlStatusRXWait", this);
+			state = CtlStatusRXWait;
+			doINTransfer(transfer.data, 0, true);
+		} else
+			LogEvent("USBChannel: SOF frame full for CtlStatusRXWait", this);
+		break;
+	case RXWaitSOF:
+		if (continueBulkTransfer(true, false)) {
+			LogEvent("USBChannel: SOF for RXWait", this);
+			state = RXWait;
+		} else
+			LogEvent("USBChannel: SOF frame full for RXWait", this);
+		break;
+	case TXWaitSOF:
+		if (continueBulkTransfer(false, false)) {
+			LogEvent("USBChannel: SOF for TXWait", this);
+			state = TXWait;
+		} else
+			LogEvent("USBChannel: SOF frame full for TXWait", this);
+		break;
+	case CtlSetupTXResult:
+	case CtlSetupTXWait:
+	case CtlDataRXWait:
+	case Unused:
+		break;
+	default:
+//		LogEvent("USBChannel: Unhandled SOF while not Unused", this);
+//		assert(0);
+		break;
+	}
+}
+
 void USBChannel::doSETUPTransfer() {
+	LogEvent("USBChannel: doSETUPTransfer", this);
+	assert(transfer.state == Transfer::Idle);
 	assert((regs->HCCHAR & OTG_HCCHAR_CHENA) == 0);
+
+	transfer.data_handled = 0;
+	transfer.data_remaining = 8;
+	transfer.data = (uint8_t*)&current_urb->setup;
+
+	transfer.packet_data = (uint32_t*)transfer.data;
+	transfer.packet_size = 0;
+	transfer.packet_handled = 0;
+	transfer.packet_remaining = transfer.data_remaining;
+	if (transfer.packet_remaining > transfer.max_packet_length)
+		transfer.packet_remaining = transfer.max_packet_length;
+
+	transfer.packet_count = 1;
+
+	transfer.transfer_time = current_urb->setupTime();
+	USB_frameChannelTime += transfer.transfer_time;
+	transfer.state = Transfer::Wait;
+
 	uint32_t hcchar = (current_urb->endpoint->device.eaddress << 22)
 		| ((current_urb->endpoint->address & 0xf) << 11)
-		| current_urb->endpoint->max_packet_length;
+		| transfer.max_packet_length;
 	if ((otgh->HFNUM & 1) == 0)
 		hcchar |= OTG_HCCHAR_ODDFRM;
 	uint32_t hctsiz = 0;
@@ -534,23 +903,62 @@ void USBChannel::doSETUPTransfer() {
 	//now we need to wait for enough space in the non-periodic tx fifo,
 	//write the 8 setup bytes and wait for a result.
 
-	data = (uint32_t*)&current_urb->setup;
-	data_remaining = 8;
-
-	otgc->GINTMSK |= OTG_GINTMSK_NPTXFEM;
+	   otgc->GINTMSK |= OTG_GINTMSK_NPTXFEM;
 }
 
-void USBChannel::doINTransfer(void *data, size_t xfrsiz) {
+void USBChannel::doINTransfer(void *data, size_t xfrsiz, bool lastTransfer) {
+	LogEvent("USBChannel: doINTransfer", this);
+	assert(transfer.state == Transfer::Idle);
 	assert((regs->HCCHAR & OTG_HCCHAR_CHENA) == 0);
+
+	transfer.data_handled = 0;
+	transfer.data_remaining = xfrsiz;
+	transfer.data = (uint8_t*)data;
+
+	transfer.packet_data = (uint32_t*)transfer.data;
+	transfer.packet_size = 0;
+	transfer.packet_handled = 0;
+	transfer.packet_remaining = transfer.data_remaining;
+	if (transfer.packet_remaining > transfer.max_packet_length)
+		transfer.packet_remaining = transfer.max_packet_length;
+
+	//if it is evenly divisable, we need to add one more (empty) packet.
+	//if it is not evenly divisable, we need to add one to round up.
+	transfer.packet_count = xfrsiz / transfer.max_packet_length;
+	if (lastTransfer) {
+		//if the final size is evenly divisable, we need to add one more (empty) packet.
+		//if the final size is not evenly divisable, we need to add one to round up.
+		//if this is not the last transfer, xfrsiz is evenly divisable, but we don't
+		//want to add another packet.
+		if (xfrsiz == transfer.packet_count * transfer.max_packet_length) {
+			switch(current_urb->endpoint->type) {
+				case USBEndpoint::Control:
+				case USBEndpoint::Bulk:
+					transfer.packet_count++;
+					break;
+				case USBEndpoint::ISO:
+				case USBEndpoint::IRQ:
+					break;
+			}
+		} else
+			transfer.packet_count++;
+	} else {
+		assert(xfrsiz == transfer.packet_count * transfer.max_packet_length);
+	}
+
+	//adjust the size seen by the USB controller. must be multiple of max_packet_length
+	xfrsiz = transfer.packet_count * transfer.max_packet_length;
+
+	transfer.transfer_time = current_urb->dataTime(transfer.max_packet_length) * transfer.packet_count;
+	USB_frameChannelTime += transfer.transfer_time;
+	transfer.state = Transfer::Wait;
+
 	uint32_t hcchar = (current_urb->endpoint->device.eaddress << 22)
 		| ((current_urb->endpoint->address & 0xf) << 11)
-		| current_urb->endpoint->max_packet_length;
+		| transfer.max_packet_length;
 	if ((otgh->HFNUM & 1) == 0)
 		hcchar |= OTG_HCCHAR_ODDFRM;
 	uint32_t hctsiz = 0;
-
-	this->data = (uint32_t*)data;
-	data_remaining = xfrsiz;
 
 	switch(current_urb->endpoint->type) {
 	case USBEndpoint::Control: hcchar |= 0; break;
@@ -558,11 +966,9 @@ void USBChannel::doINTransfer(void *data, size_t xfrsiz) {
 	case USBEndpoint::ISO: hcchar |= 0x40000; break;
 	case USBEndpoint::IRQ: hcchar |= 0xc0000; break;
 	}
-	if (current_urb->buffer_len <=
-	    current_urb->endpoint->max_packet_length) {
+	if (current_urb->buffer_len <= transfer.max_packet_length) {
 		hcchar |= 0x100000;
-	} else if (current_urb->buffer_len <=
-		   current_urb->endpoint->max_packet_length*2) {
+	} else if (current_urb->buffer_len <= transfer.max_packet_length*2) {
 		hcchar |= 0x200000;
 	} else {
 		hcchar |= 0x300000;
@@ -570,12 +976,9 @@ void USBChannel::doINTransfer(void *data, size_t xfrsiz) {
 	hctsiz = current_urb->endpoint->dataToggleIN?0x40000000:0;
 	if (current_urb->endpoint->device.speed == USBSpeed::Low)
 		hcchar |= 0x20000;
-	//if it is evenly divisable, we need to add one more (empty) packet.
-	//if it is not evenly divisable, we need to add one to round up.
-	unsigned pktcnt = xfrsiz / current_urb->endpoint->max_packet_length + 1;
-	hctsiz |= pktcnt << 19;
+
+	hctsiz |= transfer.packet_count << 19;
 	hcchar |= 0x8000;
-	xfrsiz = pktcnt * current_urb->endpoint->max_packet_length;
 
 	hctsiz |= xfrsiz;
 
@@ -591,18 +994,50 @@ void USBChannel::doINTransfer(void *data, size_t xfrsiz) {
 	//STATUS for OUT control transfers is an IN packet with 0 data bytes
 }
 
-void USBChannel::doOUTTransfer(void *data, size_t xfrsiz) {
+void USBChannel::doOUTTransfer(void *data, size_t xfrsiz, bool lastTransfer) {
+	LogEvent("USBChannel: doOUTTransfer", this);
+	assert(transfer.state == Transfer::Idle);
 	assert((regs->HCCHAR & OTG_HCCHAR_CHENA) == 0);
+
+	transfer.data_handled = 0;
+	transfer.data_remaining = xfrsiz;
+	transfer.data = (uint8_t*)data;
+
+	transfer.packet_data = (uint32_t*)transfer.data;
+	transfer.packet_size = 0;
+	transfer.packet_handled = 0;
+	transfer.packet_remaining = transfer.data_remaining;
+	if (transfer.packet_remaining > transfer.max_packet_length)
+		transfer.packet_remaining = transfer.max_packet_length;
+
+	transfer.packet_count = xfrsiz / transfer.max_packet_length;
+	if (lastTransfer) {
+		//if the final size is evenly divisable, we need to add one more (empty) packet.
+		//if the final size is not evenly divisable, we need to add one to round up.
+		//if this is not the last transfer, xfrsiz is evenly divisable, but we don't
+		//want to add another packet.
+		transfer.packet_count++;
+	} else {
+		assert(xfrsiz == transfer.packet_count * transfer.max_packet_length);
+	}
+
+	transfer.transfer_time = 0;
+	if (transfer.packet_count > 1) {
+		transfer.transfer_time += current_urb->dataTime(transfer.max_packet_length) *
+		(transfer.packet_count-1);
+		transfer.transfer_time += current_urb->dataTime(xfrsiz -
+		transfer.max_packet_length * (transfer.packet_count-1));
+	} else
+		transfer.transfer_time += current_urb->dataTime(xfrsiz);
+	USB_frameChannelTime += transfer.transfer_time;
+	transfer.state = Transfer::Wait;
+
 	uint32_t hcchar = (current_urb->endpoint->device.eaddress << 22)
 		| ((current_urb->endpoint->address & 0xf) << 11)
-		| current_urb->endpoint->max_packet_length;
+		| transfer.max_packet_length;
 	if ((otgh->HFNUM & 1) == 0)
 		hcchar |= OTG_HCCHAR_ODDFRM;
 	uint32_t hctsiz = 0;
-
-	this->data = (uint32_t*)data;
-	data_packetsize = 0;
-	data_remaining = xfrsiz;
 
 	switch(current_urb->endpoint->type) {
 	case USBEndpoint::Control: hcchar |= 0; break;
@@ -613,10 +1048,8 @@ void USBChannel::doOUTTransfer(void *data, size_t xfrsiz) {
 	hctsiz = current_urb->endpoint->dataToggleOUT?0x40000000:0;
 	if (current_urb->endpoint->device.speed == USBSpeed::Low)
 		hcchar |= 0x20000;
-	//if it is evenly divisable, we need to add one more (empty) packet.
-	//if it is not evenly divisable, we need to add one to round up.
-	unsigned pktcnt = xfrsiz / current_urb->endpoint->max_packet_length+1;
-	hctsiz |= pktcnt << 19;
+
+	hctsiz |= transfer.packet_count << 19;
 	hctsiz |= xfrsiz;
 	regs->HCCHAR = hcchar;
 	regs->HCINTMSK = USB_CHAN_OPERATING_INTMASK;
@@ -632,80 +1065,109 @@ void USBChannel::doOUTTransfer(void *data, size_t xfrsiz) {
 	switch(current_urb->endpoint->type) {
 	case USBEndpoint::Control:
 	case USBEndpoint::Bulk:
-		otgc->GINTMSK |= OTG_GINTMSK_NPTXFEM; break;
+		      otgc->GINTMSK |= OTG_GINTMSK_NPTXFEM; break;
 	case USBEndpoint::ISO:
 	case USBEndpoint::IRQ:
-		otgc->GINTMSK |= OTG_GINTMSK_PTXFEM; break;
+		      otgc->GINTMSK |= OTG_GINTMSK_PTXFEM; break;
 	}
+
+}
+
+bool USBChannel::continueBulkTransfer(bool deviceToHost, bool force) {
+	LogEvent("USBChannel: continueBulkTransfer", this);
+	unsigned int timeRemain = USB_frameTimeRemaining();
+	unsigned int packetTime = current_urb->dataTime(transfer.max_packet_length);
+	unsigned int pktcnt = timeRemain / packetTime;
+	//if force is true, we are guaranteed(more or less) to be able to push at least on packet.
+	//otherwise, the URB would not have been selected by USB_getNextURB(coming from setupForURB).
+	if (pktcnt == 0) {
+		if (force)
+			pktcnt = 1;
+		else
+			return false;
+	}
+
+	unsigned int firstTransferSize = pktcnt * transfer.max_packet_length;
+	if (firstTransferSize < data_urb_remaining && data_urb_remaining >
+		transfer.max_packet_length) {
+		if (deviceToHost)
+			doINTransfer(data_urb, firstTransferSize, false);
+		else
+			doOUTTransfer(data_urb, firstTransferSize, false);
+	} else {
+		if (deviceToHost)
+			doINTransfer(data_urb, data_urb_remaining, true);
+		else
+			doOUTTransfer(data_urb, data_urb_remaining, true);
+	}
+	return true;
 }
 
 void USBChannel::setupForURB(URB *u) {
+	LogEvent("USBChannel: setupForURB", this);
 	//okay, now we are talking. we'll have to remember how much we
 	//wrote already, and the odd/even data packet numbers.
 	//(SETUP packets reset that one)
 	assert(u->endpoint);
+	assert(state == Unused);
+	assert(transfer.state == Transfer::Idle);
 	current_urb = u;
+	data_urb = (char*)u->buffer;
+	data_urb_remaining = u->buffer_len;
+	transfer.max_packet_length = u->endpoint->max_packet_length;
 	switch(u->endpoint->type) {
 	case USBEndpoint::Control:
 		state = CtlSetupTXWait;
 		doSETUPTransfer();
 		break;
 	case USBEndpoint::Bulk:
-		if (u->endpoint->direction == USBEndpoint::DeviceToHost) {
+		if (current_urb->endpoint->direction == USBEndpoint::DeviceToHost) {
 			state = RXWait;
-			doINTransfer(u->buffer, u->buffer_len);
+			continueBulkTransfer(true, true);
 		} else {
 			state = TXWait;
-			doOUTTransfer(u->buffer, u->buffer_len);
+			continueBulkTransfer(false, true);
 		}
 		break;
-		//todo: plan for ISO/IRQ: wait for SOF, which makes
-		//all channels push their payloads on the bus
 	case USBEndpoint::ISO:
 	case USBEndpoint::IRQ:
-		state = PeriodicWait;
-		frameCounter = u->pollingInterval-1;
+		if (u->endpoint->direction == USBEndpoint::DeviceToHost) {
+			state = RXWait;
+			doINTransfer(data_urb, data_urb_remaining, true);
+		} else {
+			state = TXWait;
+			doOUTTransfer(data_urb, data_urb_remaining, true);
+		}
+		break;
+	default:
+		assert(0);
 		break;
 	}
-	otgh->HAINTMSK |= 1 << index;
+	   otgh->HAINTMSK |= 1 << index;
 }
 
 void USBChannel::retireURB(URB *u) {
+	LogEvent("USBChannel: retireURB", this);
 	if (current_urb == u) {
 		if (regs->HCCHAR & OTG_HCCHAR_CHENA) {
-			regs->HCINT = OTG_HCINT_CHH;
-			regs->HCCHAR |= OTG_HCCHAR_CHDIS;
-			regs->HCINTMSK = USB_CHAN_DISABLE_INTMASK;
-			state = Disabling;
+			assert(transfer.state != Transfer::Idle);
+			if (transfer.state != Transfer::Disabling) {
+				USB_frameChannelTime -= transfer.transfer_time;
+				regs->HCINT = OTG_HCINT_CHH;
+				regs->HCCHAR |= OTG_HCCHAR_CHDIS;
+				regs->HCINTMSK = USB_CHAN_DISABLE_INTMASK;
+				state = Disabling;
+				transfer.state = Transfer::Disabling;
+			}
 		} else {
+			if (transfer.state != Transfer::Idle &&
+				transfer.state != Transfer::Disabling) {
+				USB_frameChannelTime -= transfer.transfer_time;
+			}
+			transfer.state = Transfer::Idle;
 			state = Unused;
 		}
 		current_urb = NULL;
-	}
-}
-
-void USBChannel::SOF() {
-	if (!current_urb)
-		return;
-	if (current_urb->endpoint->type != USBEndpoint::IRQ &&
-	    current_urb->endpoint->type != USBEndpoint::ISO)
-		return;
-	if (state != PeriodicWait)
-		return;
-	//okay, now we need to check if it is time to do a transfer.
-	frameCounter++;
-	if (frameCounter >= current_urb->pollingInterval) {
-		frameCounter = 0;
-		if (current_urb->endpoint->direction ==
-		    USBEndpoint::DeviceToHost) {
-			state = RXWait;
-			doINTransfer(current_urb->buffer,
-				     current_urb->buffer_len);
-		} else {
-			state = TXWait;
-			doOUTTransfer(current_urb->buffer,
-				      current_urb->buffer_len);
-		}
 	}
 }
 

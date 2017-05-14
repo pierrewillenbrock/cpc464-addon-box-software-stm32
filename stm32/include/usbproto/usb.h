@@ -66,3 +66,5 @@ struct USBDescriptorEndpoint {
 	uint8_t bInterval;
 } PACKED;
 
+#define USB_REQUEST_CLEAR_FEATURE 1
+#define USB_REQUEST_SET_FEATURE 3

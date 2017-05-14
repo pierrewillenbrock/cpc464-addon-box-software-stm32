@@ -45,7 +45,7 @@ private:
 	enum { None, FetchHUBDescriptor, CheckingHubStatus,
 	       CheckingPortStatus, Configured, PoweringPort,
 	       ChangeAck, PortInitReset, PortInitResetAck,
-	       PortInitEnable, PortInitFetchStatus
+	       PortInitFetchStatus, Disconnected
 	} state;
 
 	struct USBHUBDeviceURB {
@@ -59,6 +59,7 @@ private:
 	std::vector<Port> ports;
 	bool needsHubStatusCheck;
 	uint16_t hubStatus;
+	uint8_t activatingPort;
 	void ctlurbCompletion(int result, URB *u);
 	static void _ctlurbCompletion(int result, URB *u);
 	void irqurbCompletion(int result, URB */*u*/);
@@ -109,15 +110,6 @@ struct USBHUBStatus {
 	uint16_t status;
 	uint16_t change;
 } PACKED;
-
-#define USBHUB_PORT_CONNECTION (0x1)
-#define USBHUB_PORT_POWER (0x100)
-#define USBHUB_PORT_LOW_SPEED (0x200)
-#define USBHUB_C_PORT_CONNECTION (0x1)
-#define USBHUB_C_PORT_ENABLE (0x2)
-#define USBHUB_C_PORT_SUSPEND (0x4)
-#define USBHUB_C_PORT_OVER_CURRENT (0x8)
-#define USBHUB_C_PORT_RESET (0x10)
 
 void USBHUBDev::ctlurbCompletion(int result, URB *u) {
 	if (result != 0) {
@@ -194,39 +186,11 @@ void USBHUBDev::ctlurbCompletion(int result, URB *u) {
 	}
 	case PortInitReset:
 	{
-		state = PortInitResetAck;
-
-		//acknowledge the reset
-		u->setup.bmRequestType = 0x23;
-		u->setup.bRequest = 1;//CLEAR FEATURE
-		u->setup.wValue = 20;//C PORT RESET
-		u->setup.wIndex = u->setup.wIndex;
-		u->setup.wLength = 0;
-		u->buffer = NULL;
-		u->buffer_len = 0;
-
-		USB_submitURB(u);
-
+		state = Configured;
 		break;
 	}
 	case PortInitResetAck:
 	{
-		state = PortInitEnable;
-
-		//now do the enable.
-		u->setup.bmRequestType = 0x23;
-		u->setup.bRequest = 3;//SET FEATURE
-		u->setup.wValue = 1;//PORT ENABLE
-		u->setup.wIndex = u->setup.wIndex;
-		u->setup.wLength = 0;
-		u->buffer = NULL;
-		u->buffer_len = 0;
-
-		USB_submitURB(u);
-
-		break;
-	}
-	case PortInitEnable: {
 		state = PortInitFetchStatus;
 
 		u->setup.bmRequestType = 0xa3;
@@ -249,7 +213,7 @@ void USBHUBDev::ctlurbCompletion(int result, URB *u) {
 
 		//port is enabled, we know the speed setting.
 		//now we need to do the activation with address
-		if (s->status & USBHUB_PORT_LOW_SPEED) {
+		if (s->status & USBHUB_PORT_STATUS_PORT_LOW_SPEED) {
 			ports[u->setup.wIndex-1].device =
 				new USBDevice(USBSpeed::Low);
 		} else {
@@ -257,6 +221,7 @@ void USBHUBDev::ctlurbCompletion(int result, URB *u) {
 				new USBDevice(USBSpeed::Full);
 		}
 		ports[u->setup.wIndex-1].device->activate();
+		activatingPort = 0xff;
 
 		state = Configured;
 		break;
@@ -304,6 +269,7 @@ void USBHUBDev::deviceClaimed() {
 	}
 
 	state = FetchHUBDescriptor;
+	activatingPort = 0xff;
 	ctlurb._this = this;
 	ctlurb.u.endpoint = device->getEndpoint(0);
 	ctlurb.u.setup.bmRequestType = 0xa0;
@@ -320,6 +286,8 @@ void USBHUBDev::deviceClaimed() {
 }
 
 void USBHUBDev::disconnected(RefPtr<USBDevice> /*device*/) {
+	state = Disconnected;
+	USB_retireURB(&ctlurb.u);
 	ctlurb.u.endpoint = NULL;
 	USB_retireURB(&irqurb.u);
 	irqurb.u.endpoint = NULL;
@@ -335,7 +303,6 @@ void USBHUBDev::checkStatus() {
 	if (state != Configured)
 		return;
 	if (needsHubStatusCheck) {
-		//DO IT!
 		state = CheckingHubStatus;
 
 		ctlurb.u.setup.bmRequestType = 0xa0;
@@ -373,18 +340,19 @@ void USBHUBDev::checkStatus() {
 
 			return;
 		}
-		if (ports[i].flags & Port::NeedsReset) {
+		if ((ports[i].flags & Port::NeedsReset) && activatingPort == 0xff) {
 			//on some hubs, the port gets enabled as a result
 			//of a port reset, contrary to the spec.
 			//so, we need to do the full device setup here, instead
 			//of deferring it to the point where we enable the
 			//device.
 			state = PortInitReset;
+			activatingPort = i;
 			ports[i].flags &= ~Port::NeedsReset;
 
 			ctlurb.u.setup.bmRequestType = 0x23;
-			ctlurb.u.setup.bRequest = 3;//SET FEATURE
-			ctlurb.u.setup.wValue = 4;//PORT RESET
+			ctlurb.u.setup.bRequest = USB_REQUEST_SET_FEATURE;
+			ctlurb.u.setup.wValue = USBHUB_FEATURE_PORT_RESET;
 			ctlurb.u.setup.wIndex = i+1;
 			ctlurb.u.setup.wLength = 0;
 			ctlurb.u.buffer = NULL;
@@ -396,14 +364,14 @@ void USBHUBDev::checkStatus() {
 		//check if the port is powered. if not, we need to do that.
 		//todo: do we need a timeout in case we have overcurrent
 		//status?
-		if (!(ports[i].status & USBHUB_PORT_POWER) &&
+		if (!(ports[i].status & USBHUB_PORT_STATUS_PORT_POWER) &&
 		    !(ports[i].flags & Port::Powered)) {
 			state = PoweringPort;
 			ports[i].flags |= Port::Powered;
 
 			ctlurb.u.setup.bmRequestType = 0x23;
-			ctlurb.u.setup.bRequest = 3;//SET FEATURE
-			ctlurb.u.setup.wValue = 8;//PORT POWER
+			ctlurb.u.setup.bRequest = USB_REQUEST_SET_FEATURE;
+			ctlurb.u.setup.wValue = USBHUB_FEATURE_PORT_POWER;
 			ctlurb.u.setup.wIndex = i+1;
 			ctlurb.u.setup.wLength = 0;
 			ctlurb.u.buffer = NULL;
@@ -415,8 +383,8 @@ void USBHUBDev::checkStatus() {
 		//if there are any .change bits, need to at least acknowledge
 		//and possibly flag the action needed for that.
 
-		if (ports[i].change & USBHUB_C_PORT_CONNECTION) {
-			if (ports[i].status & USBHUB_PORT_CONNECTION) {
+		if (ports[i].change & USBHUB_PORT_STATUS_C_PORT_CONNECTION) {
+			if (ports[i].status & USBHUB_PORT_STATUS_PORT_CONNECTION) {
 				//need to wait for 100ms, then do a port reset
 				ports[i].resetTimer =
 					Timer_Oneshot(100000, Port::_resetTimeout, &ports[i]);
@@ -432,12 +400,12 @@ void USBHUBDev::checkStatus() {
 					ports[i].device = NULL;
 				}
 			}
-			ports[i].change &= ~USBHUB_C_PORT_CONNECTION;
+			ports[i].change &= ~USBHUB_PORT_STATUS_C_PORT_CONNECTION;
 
 			state = ChangeAck;
 			ctlurb.u.setup.bmRequestType = 0x23;
-			ctlurb.u.setup.bRequest = 1;//CLEAR FEATURE
-			ctlurb.u.setup.wValue = 16;//C PORT CONNECTION
+			ctlurb.u.setup.bRequest = USB_REQUEST_CLEAR_FEATURE;
+			ctlurb.u.setup.wValue = USBHUB_FEATURE_C_PORT_CONNECTION;
 			ctlurb.u.setup.wIndex = i+1;
 			ctlurb.u.setup.wLength = 0;
 			ctlurb.u.buffer = NULL;
@@ -447,16 +415,16 @@ void USBHUBDev::checkStatus() {
 
 			return;
 		}
-		if (ports[i].change & USBHUB_C_PORT_ENABLE) {
+		if (ports[i].change & USBHUB_PORT_STATUS_C_PORT_ENABLE) {
 			//this happens when the device is disabled.
 			//todo: how to handle? new reset?
-			ports[i].change &= ~USBHUB_C_PORT_ENABLE;
+			ports[i].change &= ~USBHUB_PORT_STATUS_C_PORT_ENABLE;
 
 			state = ChangeAck;
 
 			ctlurb.u.setup.bmRequestType = 0x23;
-			ctlurb.u.setup.bRequest = 1;//CLEAR FEATURE
-			ctlurb.u.setup.wValue = 17;//C PORT ENABLE
+			ctlurb.u.setup.bRequest = USB_REQUEST_CLEAR_FEATURE;
+			ctlurb.u.setup.wValue = USBHUB_FEATURE_C_PORT_ENABLE;
 			ctlurb.u.setup.wIndex = i+1;
 			ctlurb.u.setup.wLength = 0;
 			ctlurb.u.buffer = NULL;
@@ -466,16 +434,16 @@ void USBHUBDev::checkStatus() {
 
 			return;
 		}
-		if (ports[i].change & USBHUB_C_PORT_SUSPEND) {
+		if (ports[i].change & USBHUB_PORT_STATUS_C_PORT_SUSPEND) {
 			//this happens when the device has finished resuming
 			//todo: how to handle?
-			ports[i].change &= ~USBHUB_C_PORT_SUSPEND;
+			ports[i].change &= ~USBHUB_PORT_STATUS_C_PORT_SUSPEND;
 
 			state = ChangeAck;
 
 			ctlurb.u.setup.bmRequestType = 0x23;
-			ctlurb.u.setup.bRequest = 1;//CLEAR FEATURE
-			ctlurb.u.setup.wValue = 18;//C PORT SUSPEND
+			ctlurb.u.setup.bRequest = USB_REQUEST_CLEAR_FEATURE;
+			ctlurb.u.setup.wValue = USBHUB_FEATURE_C_PORT_SUSPEND;
 			ctlurb.u.setup.wIndex = i+1;
 			ctlurb.u.setup.wLength = 0;
 			ctlurb.u.buffer = NULL;
@@ -485,17 +453,17 @@ void USBHUBDev::checkStatus() {
 
 			return;
 		}
-		if (ports[i].change & USBHUB_C_PORT_OVER_CURRENT) {
+		if (ports[i].change & USBHUB_PORT_STATUS_C_PORT_OVER_CURRENT) {
 			//this happens when over current changed, in either
 			//direction.
 			//todo: how to handle?
-			ports[i].change &= ~USBHUB_C_PORT_OVER_CURRENT;
+			ports[i].change &= ~USBHUB_PORT_STATUS_C_PORT_OVER_CURRENT;
 
 			state = ChangeAck;
 
 			ctlurb.u.setup.bmRequestType = 0x23;
-			ctlurb.u.setup.bRequest = 1;//CLEAR FEATURE
-			ctlurb.u.setup.wValue = 19;//C PORT OVER CURRENT
+			ctlurb.u.setup.bRequest = USB_REQUEST_CLEAR_FEATURE;
+			ctlurb.u.setup.wValue = USBHUB_FEATURE_C_PORT_OVER_CURRENT;
 			ctlurb.u.setup.wIndex = i+1;
 			ctlurb.u.setup.wLength = 0;
 			ctlurb.u.buffer = NULL;
@@ -505,17 +473,19 @@ void USBHUBDev::checkStatus() {
 
 			return;
 		}
-		if (ports[i].change & USBHUB_C_PORT_RESET) {
+		if (ports[i].change & USBHUB_PORT_STATUS_C_PORT_RESET) {
 			//this happens when the port reset ends.
 			//now is a good time to begin the activation process.
 			//todo: how to handle?
-			ports[i].change &= ~USBHUB_C_PORT_RESET;
+			ports[i].change &= ~USBHUB_PORT_STATUS_C_PORT_RESET;
 
-			state = ChangeAck;
+			assert(ports[i].flags & Port::Activating);
+			assert(activatingPort == i);
+			state = PortInitResetAck;
 
 			ctlurb.u.setup.bmRequestType = 0x23;
-			ctlurb.u.setup.bRequest = 1;//CLEAR FEATURE
-			ctlurb.u.setup.wValue = 20;//C PORT RESET
+			ctlurb.u.setup.bRequest = USB_REQUEST_CLEAR_FEATURE;
+			ctlurb.u.setup.wValue = USBHUB_FEATURE_C_PORT_RESET;
 			ctlurb.u.setup.wIndex = i+1;
 			ctlurb.u.setup.wLength = 0;
 			ctlurb.u.buffer = NULL;
@@ -542,6 +512,7 @@ void USBHUBDev::Port::_resetTimeout(void*data) {
 void USBHUBDev::Port::_activate(void*data) {
 	USBHUBDev::Port *_this = (USBHUBDev::Port*)data;
 	_this->flags |= NeedsReset | Activating;
+	assert(_this->hubdev);
 	_this->hubdev->checkStatus();
 }
 

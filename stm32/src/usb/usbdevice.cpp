@@ -3,7 +3,6 @@
 
 #include <usb/usbendpoint.hpp>
 #include "usbpriv.hpp"
-#include <bsp/stm32f4xx.h>
 #include <lang.hpp>
 #include <bits.h>
 #include <irq.h>
@@ -11,9 +10,6 @@
 
 #include <algorithm>
 #include <string.h>
-
-static OTG_Core_TypeDef * const otgc = OTGF_CORE;
-static OTG_Host_TypeDef * const otgh = OTGF_HOST;
 
 USBDevice::USBDevice(USBSpeed speed)
 	: speed(speed)
@@ -143,8 +139,8 @@ void USBDevice::prepareConfigurationFetch(uint8_t id) {
 
 void USBDevice::urbCompletion(int result, URB *u) {
 	assert(isRWPtr(u));
-	if (result != 0) {
-		if (state == DescDevice8) {
+	if (state == DescDevice8) {
+		if (result != 0 && u->buffer_received < 8) {
 			LogEvent("USBDevice: Resend, DescDevice8");
 			//we need to try all the sizes, some devices just
 			//emit STALL if we get it too small.
@@ -155,12 +151,18 @@ void USBDevice::urbCompletion(int result, URB *u) {
 			descriptordata.resize(u->setup.wLength);
 			u->buffer = descriptordata.data();
 			u->buffer_len = descriptordata.size();
-		} else {
-			LogEvent("USBDevice: Resend");
+
+			//try again
+			USB_submitURB(u);
+			return;
 		}
-		//try again
-		USB_submitURB(u);
-		return;
+	} else {
+		if (result != 0) {
+			LogEvent("USBDevice: Resend");
+			//try again
+			USB_submitURB(u);
+			return;
+		}
 	}
 	switch(state) {
 	case Address: {
@@ -193,13 +195,13 @@ void USBDevice::urbCompletion(int result, URB *u) {
 		endpoints[0]->max_packet_length = d->bMaxPacketSize0;
 
 		if (u->buffer_received < d->bLength) {
-			u->setup.wLength = d->bLength;
+			urb.u.setup.wLength = d->bLength;
 			descriptordata.resize(d->bLength);
-			u->buffer = descriptordata.data();
-			u->buffer_len = descriptordata.size();
+			urb.u.buffer = descriptordata.data();
+			urb.u.buffer_len = descriptordata.size();
 
 			state = DescDevice;
-			USB_submitURB(u);
+			USB_submitURB(&urb.u);
 			break;
 		} else {
 			//we have all the data needed
@@ -238,15 +240,15 @@ void USBDevice::urbCompletion(int result, URB *u) {
 			descriptordata.data();
 		assert(isRWPtr(d));
 		if (d->bLength > descriptordata.size()) {
-			u->setup.wLength = d->bLength;
+			urb.u.setup.wLength = d->bLength;
 			descriptordata.resize(d->bLength);
-			u->buffer = descriptordata.data();
-			u->buffer_len = descriptordata.size();
+			urb.u.buffer = descriptordata.data();
+			urb.u.buffer_len = descriptordata.size();
 			USB_submitURB(&urb.u);
 			break;
 		}
 
-		manufacturer = Utf16ToUtf8(
+		      m_manufacturer = Utf16ToUtf8(
 			std::basic_string<uint16_t>(d->unicodeChars,
 						    (d->bLength-2)/2));
 
@@ -273,15 +275,15 @@ void USBDevice::urbCompletion(int result, URB *u) {
 			descriptordata.data();
 		assert(isRWPtr(d));
 		if (d->bLength > descriptordata.size()) {
-			u->setup.wLength = d->bLength;
+			urb.u.setup.wLength = d->bLength;
 			descriptordata.resize(d->bLength);
-			u->buffer = descriptordata.data();
-			u->buffer_len = descriptordata.size();
+			urb.u.buffer = descriptordata.data();
+			urb.u.buffer_len = descriptordata.size();
 			USB_submitURB(&urb.u);
 			break;
 		}
 
-		product = Utf16ToUtf8(
+		      m_product = Utf16ToUtf8(
 			std::basic_string<uint16_t>(d->unicodeChars,
 						    (d->bLength-2)/2));
 
@@ -304,10 +306,10 @@ void USBDevice::urbCompletion(int result, URB *u) {
 			descriptordata.data();
 		assert(isRWPtr(d));
 		if (d->wTotalLength > descriptordata.size()) {
-			u->setup.wLength = d->wTotalLength;
+			urb.u.setup.wLength = d->wTotalLength;
 			descriptordata.resize(d->wTotalLength);
-			u->buffer = descriptordata.data();
-			u->buffer_len = descriptordata.size();
+			urb.u.buffer = descriptordata.data();
+			urb.u.buffer_len = descriptordata.size();
 			USB_submitURB(&urb.u);
 			break;
 		}

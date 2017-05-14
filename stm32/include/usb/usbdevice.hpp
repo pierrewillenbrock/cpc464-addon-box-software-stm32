@@ -14,7 +14,7 @@ struct USBEndpoint;
 
 enum class USBSpeed { Full, Low };
 
-class USBDevice : public Refcounted<USBDevice> {
+class USBDevice : public virtual Refcounted<USBDevice> {
 public:
 	class ExtraDescriptor {
 	public:
@@ -58,14 +58,15 @@ private:
 	uint8_t eaddress; ///< effective address, used for communication
 	std::deque<USBEndpoint*> endpoints;
 	friend struct USBChannel; //for speed, eaddress, datatoggleIN/OUT
+	friend struct URB; //for speed
 
 	enum { None, Address, DescDevice8, DescDevice, Disconnected,
 	       FetchManuString, FetchProdString, FetchConfigurations,
 	       Unconfigured, Configuring, ConfiguringInterfaces,
 	       Configured } state;
 	USBDescriptorDevice deviceDescriptor;
-	std::string manufacturer;
-	std::string product;
+	std::string m_manufacturer;
+	std::string m_product;
 	std::vector<uint8_t> descriptordata;
 	struct USBDeviceURB {
 		USBDevice *_this;
@@ -127,4 +128,7 @@ public:
 	//claim the device. if it is already in use,
 	//does not claim and returns false
 	bool claimDevice(USBDriverDevice *dev);
+
+	std::string const &manufacturer() const { return m_manufacturer; }
+	std::string const &product() const { return m_product; }
 };

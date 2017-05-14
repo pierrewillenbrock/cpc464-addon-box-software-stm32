@@ -3,7 +3,7 @@
 
 #include <refcounted.hpp>
 
-#include <usb/usbdevice.hpp>
+class USBDevice;
 
 struct USBEndpoint : public RefcountProxy<USBDevice> {
 	enum { HostToDevice, DeviceToHost } direction;
