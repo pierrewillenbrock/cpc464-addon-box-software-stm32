@@ -12,12 +12,14 @@
 #include "usbhub.h"
 #include "usbproto/hub.h"
 
-class USBHUB : public USBDriver {
+class USBHUB : public usb::Driver
+ {
 public:
-	virtual bool probe(RefPtr<USBDevice> device);
+	virtual bool probe(RefPtr<usb::Device> device);
 };
 
-class USBHUBDev : public USBDriverDevice {
+class USBHUBDev : public usb::DriverDevice
+ {
 private:
 	struct Port {
 		enum Flags {
@@ -33,7 +35,7 @@ private:
 		uint16_t change; //pending change bits
 		uint32_t resetTimer;
 		USBHUBDev *hubdev;
-		RefPtr<USBDevice> device;
+		RefPtr<usb::Device> device;
 		static void _resetTimeout(void *data);
 		static void _activate(void *data);
 		Port() : flags(NeedsCheck),
@@ -41,7 +43,7 @@ private:
 			 change(0),
 			 resetTimer(0) {}
 	};
-	RefPtr<USBDevice> device;
+	RefPtr<usb::Device> device;
 	enum { None, FetchHUBDescriptor, CheckingHubStatus,
 	       CheckingPortStatus, Configured, PoweringPort,
 	       ChangeAck, PortInitReset, PortInitResetAck,
@@ -50,7 +52,7 @@ private:
 
 	struct USBHUBDeviceURB {
 		USBHUBDev *_this;
-		URB u;
+		usb::URB u;
 	} irqurb, ctlurb;
 	std::vector<uint8_t> ctldata;
 	std::vector<uint8_t> irqdata;
@@ -60,26 +62,26 @@ private:
 	bool needsHubStatusCheck;
 	uint16_t hubStatus;
 	uint8_t activatingPort;
-	void ctlurbCompletion(int result, URB *u);
-	static void _ctlurbCompletion(int result, URB *u);
-	void irqurbCompletion(int result, URB */*u*/);
-	static void _irqurbCompletion(int result, URB *u);
+	void ctlurbCompletion(int result, usb::URB *u);
+	static void _ctlurbCompletion(int result, usb::URB *u);
+	void irqurbCompletion(int result, usb::URB */*u*/);
+	static void _irqurbCompletion(int result, usb::URB *u);
 
 	void checkStatus();
 public:
-	USBHUBDev(RefPtr<USBDevice> device)
+	USBHUBDev(RefPtr<usb::Device> device)
 		: device(device)
 		{}
 	~USBHUBDev() {
 	}
 	//does nothing since hubs do not support SET INTERFACE
 	virtual void deviceClaimed();
-	virtual void disconnected(RefPtr<USBDevice> /*device*/);
+	virtual void disconnected(RefPtr<usb::Device> /*device*/);
 };
 
 static const uint16_t USBClassHUB = 9;
 
-bool USBHUB::probe(RefPtr<USBDevice> device) {
+bool USBHUB::probe(RefPtr<usb::Device> device) {
 	//looks like hubs are only allowed to be complete devices without
 	//any other functionality. Look for a matching device class.
 	if (device->getDeviceDescriptor().bDeviceClass != USBClassHUB)
@@ -111,10 +113,10 @@ struct USBHUBStatus {
 	uint16_t change;
 } PACKED;
 
-void USBHUBDev::ctlurbCompletion(int result, URB *u) {
+void USBHUBDev::ctlurbCompletion(int result, usb::URB *u) {
 	if (result != 0) {
 		//try again
-		USB_submitURB(u);
+		usb::submitURB(u);
 		return;
 	}
 	switch(state) {
@@ -128,7 +130,7 @@ void USBHUBDev::ctlurbCompletion(int result, URB *u) {
 			ctldata.resize(d->bLength);
 			ctlurb.u.buffer = ctldata.data();
 			ctlurb.u.buffer_len = ctldata.size();
-			USB_submitURB(u);
+			usb::submitURB(u);
 			return;
 		}
 
@@ -151,7 +153,7 @@ void USBHUBDev::ctlurbCompletion(int result, URB *u) {
 		irqurb.u.buffer_len = irqdata.size();
 		irqurb.u.completion = _irqurbCompletion;
 
-		USB_submitURB(&irqurb.u);
+		usb::submitURB(&irqurb.u);
 
 		needsHubStatusCheck = true;
 		state = Configured;
@@ -201,7 +203,7 @@ void USBHUBDev::ctlurbCompletion(int result, URB *u) {
 		u->buffer = ctldata.data();
 		u->buffer_len = ctldata.size();
 
-		USB_submitURB(u);
+		usb::submitURB(u);
 
 		break;
 	}
@@ -215,10 +217,10 @@ void USBHUBDev::ctlurbCompletion(int result, URB *u) {
 		//now we need to do the activation with address
 		if (s->status & USBHUB_PORT_STATUS_PORT_LOW_SPEED) {
 			ports[u->setup.wIndex-1].device =
-				new USBDevice(USBSpeed::Low);
+				new usb::Device (usb::Speed::Low);
 		} else {
 			ports[u->setup.wIndex-1].device =
-				new USBDevice(USBSpeed::Full);
+				new usb::Device (usb::Speed::Full);
 		}
 		ports[u->setup.wIndex-1].device->activate();
 		activatingPort = 0xff;
@@ -230,12 +232,12 @@ void USBHUBDev::ctlurbCompletion(int result, URB *u) {
 	}
 }
 
-void USBHUBDev::_ctlurbCompletion(int result, URB *u) {
+void USBHUBDev::_ctlurbCompletion(int result, usb::URB *u) {
 	USBHUBDeviceURB *du = container_of(u, USBHUBDeviceURB, u);
 	du->_this->ctlurbCompletion(result, u);
 }
 
-void USBHUBDev::irqurbCompletion(int result, URB */*u*/) {
+void USBHUBDev::irqurbCompletion(int result, usb::URB */*u*/) {
 	//this is called repeatedly by the usb subsystem.
 	if (result != 0)
 		return;
@@ -248,7 +250,7 @@ void USBHUBDev::irqurbCompletion(int result, URB */*u*/) {
 	checkStatus();
 }
 
-void USBHUBDev::_irqurbCompletion(int result, URB *u) {
+void USBHUBDev::_irqurbCompletion(int result, usb::URB *u) {
 	USBHUBDeviceURB *du = container_of(u, USBHUBDeviceURB, u);
 	du->_this->irqurbCompletion(result, u);
 }
@@ -282,14 +284,14 @@ void USBHUBDev::deviceClaimed() {
 	ctlurb.u.buffer_len = ctldata.size();
 	ctlurb.u.completion = _ctlurbCompletion;
 
-	USB_submitURB(&ctlurb.u);
+	usb::submitURB(&ctlurb.u);
 }
 
-void USBHUBDev::disconnected(RefPtr<USBDevice> /*device*/) {
+void USBHUBDev::disconnected(RefPtr<usb::Device> /*device*/) {
 	state = Disconnected;
-	USB_retireURB(&ctlurb.u);
+	usb::retireURB(&ctlurb.u);
 	ctlurb.u.endpoint = NULL;
-	USB_retireURB(&irqurb.u);
+	usb::retireURB(&irqurb.u);
 	irqurb.u.endpoint = NULL;
 	for(auto &p : ports) {
 		if (p.device) {
@@ -317,7 +319,7 @@ void USBHUBDev::checkStatus() {
 
 		needsHubStatusCheck = false;
 
-		USB_submitURB(&ctlurb.u);
+		usb::submitURB(&ctlurb.u);
 		return;
 	}
 	for(unsigned int i = 0; i < ports.size(); i++) {
@@ -336,7 +338,7 @@ void USBHUBDev::checkStatus() {
 
 			ports[i].flags &= ~Port::NeedsCheck;
 
-			USB_submitURB(&ctlurb.u);
+			usb::submitURB(&ctlurb.u);
 
 			return;
 		}
@@ -358,7 +360,7 @@ void USBHUBDev::checkStatus() {
 			ctlurb.u.buffer = NULL;
 			ctlurb.u.buffer_len = 0;
 
-			USB_submitURB(&ctlurb.u);
+			usb::submitURB(&ctlurb.u);
 			return;
 		}
 		//check if the port is powered. if not, we need to do that.
@@ -377,7 +379,7 @@ void USBHUBDev::checkStatus() {
 			ctlurb.u.buffer = NULL;
 			ctlurb.u.buffer_len = 0;
 
-			USB_submitURB(&ctlurb.u);
+			usb::submitURB(&ctlurb.u);
 			return;
 		}
 		//if there are any .change bits, need to at least acknowledge
@@ -392,7 +394,7 @@ void USBHUBDev::checkStatus() {
 				Timer_Cancel(ports[i].resetTimer);
 				//if we have a device allocated, drop it.
 				if (ports[i].flags & Port::Activating) {
-					USB_activationComplete();
+					usb::activationComplete();
 					ports[i].flags &= ~Port::Activating;
 				}
 				if (ports[i].device) {
@@ -411,7 +413,7 @@ void USBHUBDev::checkStatus() {
 			ctlurb.u.buffer = NULL;
 			ctlurb.u.buffer_len = 0;
 
-			USB_submitURB(&ctlurb.u);
+			usb::submitURB(&ctlurb.u);
 
 			return;
 		}
@@ -430,7 +432,7 @@ void USBHUBDev::checkStatus() {
 			ctlurb.u.buffer = NULL;
 			ctlurb.u.buffer_len = 0;
 
-			USB_submitURB(&ctlurb.u);
+			usb::submitURB(&ctlurb.u);
 
 			return;
 		}
@@ -449,7 +451,7 @@ void USBHUBDev::checkStatus() {
 			ctlurb.u.buffer = NULL;
 			ctlurb.u.buffer_len = 0;
 
-			USB_submitURB(&ctlurb.u);
+			usb::submitURB(&ctlurb.u);
 
 			return;
 		}
@@ -469,7 +471,7 @@ void USBHUBDev::checkStatus() {
 			ctlurb.u.buffer = NULL;
 			ctlurb.u.buffer_len = 0;
 
-			USB_submitURB(&ctlurb.u);
+			usb::submitURB(&ctlurb.u);
 
 			return;
 		}
@@ -491,7 +493,7 @@ void USBHUBDev::checkStatus() {
 			ctlurb.u.buffer = NULL;
 			ctlurb.u.buffer_len = 0;
 
-			USB_submitURB(&ctlurb.u);
+			usb::submitURB(&ctlurb.u);
 
 			return;
 		}
@@ -506,7 +508,7 @@ void USBHUBDev::checkStatus() {
 
 void USBHUBDev::Port::_resetTimeout(void*data) {
 	//just flag it, then ask the hub device about anything it wants to do.
-	USB_queueDeviceActivation(_activate, data);
+	usb::queueDeviceActivation (_activate, data);
 }
 
 void USBHUBDev::Port::_activate(void*data) {
@@ -519,5 +521,5 @@ void USBHUBDev::Port::_activate(void*data) {
 static USBHUB usbhub_driver;
 
 void USBHUB_Setup() {
-	USB_registerDriver(&usbhub_driver);
+	usb::registerDriver(&usbhub_driver);
 }

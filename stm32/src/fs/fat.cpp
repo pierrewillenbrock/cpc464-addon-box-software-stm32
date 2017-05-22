@@ -8,136 +8,140 @@
 #include <fs/vfs.hpp>
 #include <lang.hpp>
 
-struct FatDirInode;
+/** \brief Private structures for parsing and manipulating FAT file systems
+ */
+namespace fat_priv {
 
-struct FAT_Partition_priv {
-	uint32_t first_block;
-	uint32_t num_blocks;
-	MSD_Info *msd;
-	uint32_t blockno;
-	std::vector<uint8_t> block;
-	MSDReadCommand read_command;
+	struct DirInode;
 
-	uint32_t fat_start_block;//relative to first_block
-	uint32_t fat_block_count;
-	uint32_t fat_count;
-	uint64_t fs_num_blocks;
-	uint32_t bytes_per_cluster;
-	uint32_t blocks_per_cluster;
-	uint32_t cluster_0_block;//relative to first_block, also does not
-	                       //actually pointer to a valid cluster.
-	RefPtr<Inode> rootInode;
-	//need to store where the fat and its copies are kept
-	//need to store where any other global info is kept
-	enum { Fat12, Fat16, Fat32 } fattype;
-};
+	struct Partition {
+		uint32_t first_block;
+		uint32_t num_blocks;
+		MSD_Info *msd;
+		uint32_t blockno;
+		std::vector<uint8_t> block;
+		MSDReadCommand read_command;
 
-static std::deque<FAT_Partition_priv*> partitions;
+		uint32_t fat_start_block;//relative to first_block
+		uint32_t fat_block_count;
+		uint32_t fat_count;
+		uint64_t fs_num_blocks;
+		uint32_t bytes_per_cluster;
+		uint32_t blocks_per_cluster;
+		uint32_t cluster_0_block;//relative to first_block, also does not
+		//actually pointer to a valid cluster.
+		RefPtr<vfs::Inode> rootInode;
+		//need to store where the fat and its copies are kept
+		//need to store where any other global info is kept
+		enum { Fat12, Fat16, Fat32 } fattype;
+	};
 
-struct FAT16_BootSector {
-	uint8_t code1[3];
-	char OEM[8];
-	uint16_t byte_per_sector;
-	uint8_t sectors_per_cluster;
-	uint16_t reserved_sectors;//including boot sector
-	uint8_t fat_copies;
-	uint16_t root_dir_entry_count;
-	uint16_t num_sectors_short;
-	uint8_t media_descriptor;
-	uint16_t sectors_per_fat;
-	uint16_t sectors_per_track;
-	uint16_t head_count;
-	uint32_t hidden_sectors;//blocks between mbr and this one, i.E. first_block-1
-	uint32_t num_sectors;
-	uint8_t physical_drive_number;
-	uint8_t reserved;
-	uint8_t extended_boot_signature;
-	uint32_t filesystem_id;
-	char name[11];
-	char fatvariant[8];
-	char code2[448];
-	uint16_t signature;
-} __attribute__((packed));
+	static std::deque<Partition*> partitions;
 
-struct FAT32_BootSector {
-	uint8_t code1[3];
-	char OEM[8];
-	uint16_t byte_per_sector;
-	uint8_t sectors_per_cluster;
-	uint16_t reserved_sectors;//including boot sector
-	uint8_t fat_copies;
-	uint16_t root_dir_entry_count;
-	uint16_t num_sectors_short;
-	uint8_t media_descriptor;
-	uint16_t sectors_per_fat_short;
-	uint16_t sectors_per_track;
-	uint16_t head_count;
-	uint32_t hidden_sectors;//blocks between mbr and this one, i.E. first_block-1
-	uint32_t num_sectors;
-	uint32_t sectors_per_fat;
-	uint16_t fat_flags;
-	uint16_t fat_version;
-	uint32_t root_dir_cluster;
-	uint16_t fs_information_sector;
-	uint16_t boot_sector_copy_sector;
-	char reserved1[12];
-	uint8_t physical_drive_number;
-	uint8_t reserved2;
-	uint8_t extended_boot_signature;
-	uint32_t filesystem_id;
-	char name[11];
-	char fatvariant[8];
-	char code2[420];
-	uint16_t signature;
-} __attribute__((packed));
-
-union FatDirEntry {
-	struct {
-		uint8_t state;//if 0, there are no more entries in this directory. if 0xe5, it is unused.
-		uint8_t reserved1[10];
-		uint8_t attributes;//if 0x0f, it is a long file name entry
-		uint8_t reserved2[20];
-	} __attribute__((packed)) detect;
-	struct {
-		char filename[8];
-		char extension[3];
-		uint8_t attributes;
+	struct FAT16_BootSector {
+		uint8_t code1[3];
+		char OEM[8];
+		uint16_t byte_per_sector;
+		uint8_t sectors_per_cluster;
+		uint16_t reserved_sectors;//including boot sector
+		uint8_t fat_copies;
+		uint16_t root_dir_entry_count;
+		uint16_t num_sectors_short;
+		uint8_t media_descriptor;
+		uint16_t sectors_per_fat;
+		uint16_t sectors_per_track;
+		uint16_t head_count;
+		uint32_t hidden_sectors;//blocks between mbr and this one, i.E. first_block-1
+		uint32_t num_sectors;
+		uint8_t physical_drive_number;
 		uint8_t reserved;
-		uint8_t creation_time_10ms;
-		uint16_t creation_2s:5;
-		uint16_t creation_minute:6;
-		uint16_t creation_h:5;
-		uint16_t creation_day:5;
-		uint16_t creation_mon:4;
-		uint16_t creation_year:7;
-		uint16_t access_day:5;
-		uint16_t access_mon:4;
-		uint16_t access_year:7;
-		uint16_t high_cluster;
-		uint16_t modification_2s:5;
-		uint16_t modification_minute:6;
-		uint16_t modification_h:5;
-		uint16_t modification_day:5;
-		uint16_t modification_mon:4;
-		uint16_t modification_year:7;
-		uint16_t low_cluster;
-		uint32_t size;
-	} __attribute__((packed)) regular;
-	struct {
-		uint8_t order;//bit 0x40 if last part of name, rest is block number starting at 1
-		uint16_t name1[5];
-		uint8_t attributes;
-		uint8_t type;
-		uint8_t checksum;
-		uint16_t name2[6];
-		uint16_t cluster;//always zero
-		uint16_t name3[2];
-	} __attribute__((packed)) longfilename;
-} __attribute__((packed));
+		uint8_t extended_boot_signature;
+		uint32_t filesystem_id;
+		char name[11];
+		char fatvariant[8];
+		char code2[448];
+		uint16_t signature;
+	} __attribute__((packed));
 
+	struct FAT32_BootSector {
+		uint8_t code1[3];
+		char OEM[8];
+		uint16_t byte_per_sector;
+		uint8_t sectors_per_cluster;
+		uint16_t reserved_sectors;//including boot sector
+		uint8_t fat_copies;
+		uint16_t root_dir_entry_count;
+		uint16_t num_sectors_short;
+		uint8_t media_descriptor;
+		uint16_t sectors_per_fat_short;
+		uint16_t sectors_per_track;
+		uint16_t head_count;
+		uint32_t hidden_sectors;//blocks between mbr and this one, i.E. first_block-1
+		uint32_t num_sectors;
+		uint32_t sectors_per_fat;
+		uint16_t fat_flags;
+		uint16_t fat_version;
+		uint32_t root_dir_cluster;
+		uint16_t fs_information_sector;
+		uint16_t boot_sector_copy_sector;
+		char reserved1[12];
+		uint8_t physical_drive_number;
+		uint8_t reserved2;
+		uint8_t extended_boot_signature;
+		uint32_t filesystem_id;
+		char name[11];
+		char fatvariant[8];
+		char code2[420];
+		uint16_t signature;
+	} __attribute__((packed));
+
+	union DirEntry {
+		struct {
+			uint8_t state;//if 0, there are no more entries in this directory. if 0xe5, it is unused.
+			uint8_t reserved1[10];
+			uint8_t attributes;//if 0x0f, it is a long file name entry
+			uint8_t reserved2[20];
+		} __attribute__((packed)) detect;
+		struct {
+			char filename[8];
+			char extension[3];
+			uint8_t attributes;
+			uint8_t reserved;
+			uint8_t creation_time_10ms;
+			uint16_t creation_2s:5;
+			uint16_t creation_minute:6;
+			uint16_t creation_h:5;
+			uint16_t creation_day:5;
+			uint16_t creation_mon:4;
+			uint16_t creation_year:7;
+			uint16_t access_day:5;
+			uint16_t access_mon:4;
+			uint16_t access_year:7;
+			uint16_t high_cluster;
+			uint16_t modification_2s:5;
+			uint16_t modification_minute:6;
+			uint16_t modification_h:5;
+			uint16_t modification_day:5;
+			uint16_t modification_mon:4;
+			uint16_t modification_year:7;
+			uint16_t low_cluster;
+			uint32_t size;
+		} __attribute__((packed)) regular;
+		struct {
+			uint8_t order;//bit 0x40 if last part of name, rest is block number starting at 1
+			uint16_t name1[5];
+			uint8_t attributes;
+			uint8_t type;
+			uint8_t checksum;
+			uint16_t name2[6];
+			uint16_t cluster;//always zero
+			uint16_t name3[2];
+		} __attribute__((packed)) longfilename;
+	} __attribute__((packed));
+}
 
 static void fetchBlock_cmpl(int res, MSDReadCommand *command) {
-	FAT_Partition_priv *p = container_of(command, FAT_Partition_priv,
+	fat_priv::Partition *p = container_of(command, fat_priv::Partition,
 					     read_command);
 	if (res != 0) {
 		p->blockno = ~0U;
@@ -146,7 +150,7 @@ static void fetchBlock_cmpl(int res, MSDReadCommand *command) {
 	p->blockno = p->read_command.start_block - p->first_block;
 }
 
-static void fetchBlock(FAT_Partition_priv *priv, uint32_t block) {
+static void fetchBlock( fat_priv::Partition *priv, uint32_t block) {
 	volatile uint32_t* blocknop = &priv->blockno;
 	if (priv->blockno == block)
 		return;
@@ -167,19 +171,19 @@ static void fetchBlock(FAT_Partition_priv *priv, uint32_t block) {
 /* pre-condition: none
    post-condition: read_command->completion gets called once and only once
  */
-static void fetchBlock_nb(FAT_Partition_priv *priv, uint32_t block,
+static void fetchBlock_nb( fat_priv::Partition *priv, uint32_t block,
 			  MSDReadCommand *read_command) {
 	read_command->start_block = priv->first_block + block;
 	priv->msd->readBlocks(priv->msd->data, read_command);
 }
 
-static uint32_t findNextCluster(FAT_Partition_priv *priv, uint32_t cluster) {
+static uint32_t findNextCluster( fat_priv::Partition *priv, uint32_t cluster) {
 	fetchBlock(priv, cluster*4/512 + priv->fat_start_block);
 	return ((uint32_t*)priv->block.data())[cluster%(512/4)];
 }
 
 struct Fat_FindNextCluster_Command {
-	FAT_Partition_priv *priv;
+	fat_priv::Partition *priv;
 	uint32_t cluster;
 	void (*completion)(uint32_t cluster,
 			   Fat_FindNextCluster_Command *command);
@@ -238,13 +242,13 @@ struct FatInodeReadNb {
 	Fat_FindNextCluster_Command findnextcluster_command;
 };
 
-struct FatInode : public Inode {
-	FAT_Partition_priv *priv;
+struct FatInode : public vfs::Inode {
+	fat_priv::Partition *priv;
 	uint32_t first_cluster;
 	uint32_t size;
 	uint32_t current_cluster;
 	uint32_t current_offset;
-	FatInode(FAT_Partition_priv *priv,
+	FatInode( fat_priv::Partition *priv,
 		 uint32_t first_cluster,
 		 uint32_t size,
 		 mode_t mode)
@@ -267,15 +271,15 @@ struct FatInode : public Inode {
 	virtual _ssize_t pwrite_nb(PWriteCommand * command);
 };
 
-struct Fat16RootDirInode : public Inode {
-	FAT_Partition_priv *priv;
+struct Fat16RootDirInode : public vfs::Inode {
+	fat_priv::Partition *priv;
 	uint32_t root_dir_start_block;//relative to first_block
 	uint32_t root_dir_entry_count;
-	Fat16RootDirInode(FAT_Partition_priv *priv) : priv(priv) {}
+	Fat16RootDirInode( fat_priv::Partition *priv) : priv(priv) {}
 };
 
 struct FatDirInode : public FatInode {
-	FatDirInode(FAT_Partition_priv *priv,
+	FatDirInode( fat_priv::Partition *priv,
 		    uint32_t first_cluster,
 		    uint32_t size,
 		    mode_t mode)
@@ -283,7 +287,7 @@ struct FatDirInode : public FatInode {
 		{}
 	//first d_off is -1, -2 and -3 are reserved, rest is free for use.
 	bool _readdir(off_t &d_off, std::string &name,
-		      FatDirEntry &ent) {
+		      fat_priv::DirEntry &ent) {
 		std::basic_string<uint16_t> long_name;
 		while(1) {
 			d_off++;
@@ -357,10 +361,10 @@ struct FatDirInode : public FatInode {
 
 		return false;
 	}
-	virtual int lookup(RefPtr<Dentry> dent) {
+	virtual int lookup(RefPtr<vfs::Dentry> dent) {
 		off_t d_off = -1;
 		std::string name;
-		FatDirEntry ent;
+		fat_priv::DirEntry ent;
 		while(_readdir(d_off, name, ent)) {
 			if (name == dent->name) {
 				mode = S_IRUSR | S_IRGRP | S_IROTH |
@@ -403,7 +407,7 @@ struct FatDirInode : public FatInode {
 	}
 	//first d_off is -1, -2 and -3 are reserved, rest is free for use.
 	virtual bool readdir(off_t &d_off, std::string &name) {
-		FatDirEntry ent;
+		fat_priv::DirEntry ent;
 		return _readdir(d_off, name, ent);
 	}
 };
@@ -417,13 +421,13 @@ static void FAT_probe_partition(uint32_t type, uint32_t first_block,
 		return;
 	//otherwise, create and register the filesystem support structure
 	//and read the first sector of the partition
-	FAT_Partition_priv *p = new FAT_Partition_priv();
+	fat_priv::Partition *p = new fat_priv::Partition();
 
 	p->first_block = first_block;
 	p->num_blocks = num_blocks;
 	p->msd = msd;
 	p->block.resize(512);
-	partitions.push_back(p);
+	fat_priv::partitions.push_back(p);
 	p->read_command.start_block = first_block;
 	p->read_command.num_blocks = 1;
 	p->read_command.dst = p->block.data();
@@ -432,12 +436,13 @@ static void FAT_probe_partition(uint32_t type, uint32_t first_block,
 }
 
 static void FAT_probe_cmpl(int res, MSDReadCommand *command) {
-	FAT_Partition_priv *p = container_of(command, FAT_Partition_priv,
+	fat_priv::Partition *p = container_of(command, fat_priv::Partition,
 					     read_command);
 	if (res != 0) {
-		for(auto it = partitions.begin(); it != partitions.end();it++) {
+		for(auto it = fat_priv::partitions.begin();
+		    it != fat_priv::partitions.end();it++) {
 			if (*it == p) {
-				partitions.erase(it);
+				fat_priv::partitions.erase(it);
 				delete p;
 				break;
 			}
@@ -446,14 +451,14 @@ static void FAT_probe_cmpl(int res, MSDReadCommand *command) {
 	}
 
 	p->blockno = 0;
-	FAT16_BootSector *fat16bs = (FAT16_BootSector*)p->block.data();
-	FAT32_BootSector *fat32bs = (FAT32_BootSector*)p->block.data();
+	fat_priv::FAT16_BootSector *fat16bs = (fat_priv::FAT16_BootSector*)p->block.data();
+	fat_priv::FAT32_BootSector *fat32bs = (fat_priv::FAT32_BootSector*)p->block.data();
 	if (memcmp(fat16bs->fatvariant,"FAT16",5) == 0 && 0) {
-		p->fattype = FAT_Partition_priv::Fat12;
+		p->fattype = fat_priv::Partition::Fat12;
 	} else if (memcmp(fat16bs->fatvariant,"FAT16",5) == 0 && 0) {
-		p->fattype = FAT_Partition_priv::Fat16;
+		p->fattype = fat_priv::Partition::Fat16;
 	} else if (memcmp(fat32bs->fatvariant,"FAT32",5) == 0) {
-		p->fattype = FAT_Partition_priv::Fat32;
+		p->fattype = fat_priv::Partition::Fat32;
 		p->fat_start_block = fat32bs->reserved_sectors*
 			fat32bs->byte_per_sector/512;
 		p->fat_block_count = fat32bs->sectors_per_fat*
@@ -472,11 +477,12 @@ static void FAT_probe_cmpl(int res, MSDReadCommand *command) {
 					       ~0U,
 					       S_IFDIR |
 					       S_IRWXU | S_IRWXG | S_IRWXO);
-		VFS_RegisterFilesystem("fat",p->rootInode);
+		vfs::RegisterFilesystem("fat",p->rootInode);
 	} else {
-		for(auto it = partitions.begin(); it != partitions.end();it++) {
+		for(auto it = fat_priv::partitions.begin();
+		    it != fat_priv::partitions.end();it++) {
 			if (*it == p) {
-				partitions.erase(it);
+				fat_priv::partitions.erase(it);
 				delete p;
 				break;
 			}
@@ -486,11 +492,12 @@ static void FAT_probe_cmpl(int res, MSDReadCommand *command) {
 }
 
 static void FAT_remove_msd(struct MSD_Info *msd) {
-	for(auto it = partitions.begin(); it != partitions.end();) {
+	for(auto it = fat_priv::partitions.begin();
+	    it != fat_priv::partitions.end();) {
 		if ((*it)->msd == msd) {
-			FAT_Partition_priv *p = *it;
-			it = partitions.erase(it);
-			VFS_UnregisterFilesystem(p->rootInode);
+			fat_priv::Partition *p = *it;
+			it = fat_priv::partitions.erase(it);
+			vfs::UnregisterFilesystem(p->rootInode);
 			delete p;
 		} else
 			it++;

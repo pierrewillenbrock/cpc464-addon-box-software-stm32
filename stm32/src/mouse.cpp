@@ -9,7 +9,8 @@
 
 static int const mouse_scale = 2;
 
-class MouseInput : public InputListener {
+class MouseInput : public input::Listener
+ {
 public:
 	uint32_t x;
 	uint32_t y;
@@ -19,21 +20,22 @@ public:
 	sprite_info spriteinfo;
 	uint8_t sprite_tile_base;
 	uint16_t sprite_map_base;
-	virtual void inputReport(InputReport const &rep);
+	virtual void inputReport( input::Report const &rep);
 	   MouseInput()
 		: x(ui::screen.rect().width*mouse_scale/2)
 		, y(ui::screen.rect().height*mouse_scale/2)
 		{}
 };
 
-class MouseDevInput : public InputDevListener {
+class MouseDevInput : public input::DeviceListener
+ {
 public:
-	virtual void inputDeviceAdd(InputDev *dev);
+	virtual void inputDeviceAdd( input::Device *dev);
 };
 
 
 
-void MouseInput::inputReport(InputReport const &rep) {
+void MouseInput::inputReport( input::Report const &rep) {
 	if ((rep.flags & 1) && rep.usage == 0x10030) {
 		// X axis motion.
 		int32_t nx = x + rep.value;
@@ -88,21 +90,21 @@ void MouseInput::inputReport(InputReport const &rep) {
 		sprite.setVisible(true);
 	}
 	if (rep.usage == 0x90001) {
-		//button #1 info. probably should filter for mouse-like devices.
+		//button #1 info
 		if (rep.value)
 			UI_mouseDown(0);
 		else
 			UI_mouseUp(0);
 	}
 	if (rep.usage == 0x90002) {
-		//button #2 info. probably should filter for mouse-like devices.
+		//button #2 info
 		if (rep.value)
 			UI_mouseDown(1);
 		else
 			UI_mouseUp(1);
 	}
 	if (rep.usage == 0x90003) {
-		//button #3 info. probably should filter for mouse-like devices.
+		//button #3 info
 		if (rep.value)
 			UI_mouseDown(2);
 		else
@@ -113,7 +115,12 @@ void MouseInput::inputReport(InputReport const &rep) {
 static MouseInput mouseinput;
 static MouseDevInput mousedevinput;
 
-void MouseDevInput::inputDeviceAdd(InputDev *dev) {
+void MouseDevInput::inputDeviceAdd( input::Device *dev) {
+	/** \todo filter for mouse like devices:
+	 * relative X/Y axis, button #1, #2
+	 * \todo add joystick support, also ui control
+	 * \todo add keyboard ui control
+	 */
 	dev->addListener(&mouseinput);
 }
 
@@ -144,14 +151,14 @@ void Mouse_Setup() {
 		TILE_LINE(0,0,0,0,0,0,0,0, 0,0,0,0),
 		};
 #undef TILE_LINE
-	   mouseinput.refIsStatic();
-	Input_registerDeviceListener(&mousedevinput);
-	   mouseinput.sprite_tile_base =
+	mouseinput.refIsStatic();
+	input::registerDeviceListener(&mousedevinput);
+	mouseinput.sprite_tile_base =
 		sprite_alloc_vmem(0x10*2, 0x10, ~0U) / 0x10;
 	FPGAComm_CopyToFPGA(FPGA_GRPH_SPRITES_RAM +
 			                     mouseinput.sprite_tile_base*0x10*4,
 			    tiles, sizeof(tiles));
-	   mouseinput.sprite_map_base = sprite_alloc_vmem(2, 1, ~0U);
+	mouseinput.sprite_map_base = sprite_alloc_vmem(2, 1, ~0U);
 	uint32_t map[] = {
 		//operator + promotes to (int), even if all arguments are uint8_t
 		uint32_t((mouseinput.sprite_tile_base + 0) << 2),
@@ -160,14 +167,14 @@ void Mouse_Setup() {
 	FPGAComm_CopyToFPGA(FPGA_GRPH_SPRITES_RAM +
 			    mouseinput.sprite_map_base*4,
 			    map, sizeof(map));
-	   mouseinput.spriteinfo.hpos = -16;
-	   mouseinput.spriteinfo.vpos = -16;
-	   mouseinput.spriteinfo.map_addr = mouseinput.sprite_map_base;
-	   mouseinput.spriteinfo.hsize = 1;
-	   mouseinput.spriteinfo.vsize = 2;
-	   mouseinput.spriteinfo.hpitch = 1;
-	   mouseinput.spriteinfo.doublesize = 0;
-	   mouseinput.sprite.setSpriteInfo(mouseinput.spriteinfo);
-	   mouseinput.sprite.setZOrder(65536);
-	   mouseinput.sprite.setPriority(65536);
+	mouseinput.spriteinfo.hpos = -16;
+	mouseinput.spriteinfo.vpos = -16;
+	mouseinput.spriteinfo.map_addr = mouseinput.sprite_map_base;
+	mouseinput.spriteinfo.hsize = 1;
+	mouseinput.spriteinfo.vsize = 2;
+	mouseinput.spriteinfo.hpitch = 1;
+	mouseinput.spriteinfo.doublesize = 0;
+	mouseinput.sprite.setSpriteInfo(mouseinput.spriteinfo);
+	mouseinput.sprite.setZOrder(65536);
+	mouseinput.sprite.setPriority(65536);
 }

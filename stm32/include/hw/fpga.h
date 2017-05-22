@@ -1,0 +1,33 @@
+
+#pragma once
+
+#define SPI_NSS_PIN GPIO_Pin_4
+#define SPI_NSS_GPIO GPIOA
+#define SPI_GPIO GPIOA
+#define SPI_PINS (GPIO_Pin_5 | GPIO_Pin_6 | GPIO_Pin_7)
+#define SPI_GPIO_RCC RCC_AHB1Periph_GPIOA
+#define SPI_DEV SPI1
+#define SPI_AF GPIO_AF_SPI1
+#define SPI_RCC_FUNC RCC_APB2PeriphClockCmd
+#define SPI_RCC RCC_APB2Periph_SPI1
+#define SPI_IRQn SPI1_IRQn
+#define SPI_IRQHandler SPI1_IRQHandler
+#define SPI_TX_DMA DMA2_Stream5
+#define SPI_RX_DMA DMA2_Stream0
+#define SPI_TX_DMA_IRQn DMA2_Stream5_IRQn
+#define SPI_RX_DMA_IRQn DMA2_Stream0_IRQn
+#define SPI_TX_DMA_IRQHandler DMA2_Stream5_IRQHandler
+#define SPI_RX_DMA_IRQHandler DMA2_Stream0_IRQHandler
+#define SPI_RX_DMA_IT_TE DMA_IT_TEIF0
+#define SPI_RX_DMA_CLEAR_FLAGS DMA_FLAG_FEIF0 | DMA_FLAG_DMEIF0 | DMA_FLAG_TEIF0 | DMA_FLAG_HTIF0 | DMA_FLAG_TCIF0
+#define SPI_TX_DMA_CLEAR_FLAGS DMA_FLAG_FEIF5 | DMA_FLAG_DMEIF5 | DMA_FLAG_TEIF5 | DMA_FLAG_HTIF5 | DMA_FLAG_TCIF5
+
+#define FPGA_IRQ_PIN GPIO_Pin_4
+#define FPGA_IRQ_GPIO GPIOC
+#define FPGA_IRQ_EXTI_Line EXTI_Line4
+#define FPGA_IRQ_EXTI_PortSourceGPIO EXTI_PortSourceGPIOC
+#define FPGA_IRQ_EXTI_PinSource EXTI_PinSource4
+#define FPGA_IRQ_EXTI_IRQn EXTI4_IRQn
+#define FPGA_IRQ_EXTI_IRQHandler EXTI4_IRQHandler
+
+

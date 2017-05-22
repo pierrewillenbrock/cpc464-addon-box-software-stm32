@@ -57,7 +57,7 @@ static uint8_t driveLastMotorState = 0;
 static uint8_t driveLastAccessState = 0;
 static uint8_t driveAccessCount[4] = {0,0,0,0};
 
-static RefPtr<Disk> images[4];
+static RefPtr<dsk::Disk> images[4];
 
 static void driveStatusCompletion(int result, struct FPGAComm_Command */*unused*/) {
 	driveStatusState = 0;
@@ -107,7 +107,7 @@ static FDDResponse fdcirq_response;
 static FPGAComm_Command fdcirq_FPGACommand;
 static FPGAComm_Command fdcirq_FPGACommand2;
 static FPGAComm_Command fdcirq_endisable_FPGACommand;
-static DiskFindSectorCommand fdcirq_findsectorcommand;
+static dsk::DiskFindSectorCommand fdcirq_findsectorcommand;
 static enum {
 	IDLE,
 	COMMAND_FETCH,
@@ -115,7 +115,7 @@ static enum {
 	WAIT_TRANSFERDONE,
 	COMMAND_FINAL_FETCH,
 } fdcirq_state = IDLE;
-static RefPtr<Disk> fdcirq_dskimage;
+static RefPtr<dsk::Disk> fdcirq_dskimage;
 
 static uint8_t sectorbuf[2048];
 
@@ -136,8 +136,8 @@ static void fdcirq_FPGACommCompletion(int result,
   * stm32 reads memory and pulls response.valid low when it is done, which
     clears irq.
 */
-static void fdcirq_DiskFindSectorCompletion(RefPtr<DiskSector> sector,
-					   DiskFindSectorCommand */*command*/) {
+static void fdcirq_DiskFindSectorCompletion(RefPtr<dsk::DiskSector> sector,
+					   dsk::DiskFindSectorCommand */*command*/) {
 	driveAccessCount[fdcirq_command.driveUnit] = 10;
 	switch (fdcirq_state) {
 	case SECTOR_FETCH:
@@ -427,7 +427,7 @@ void FDC_Setup() {
 
 void FDC_InsertDisk(int drive, char const *filename) {
 	assert(drive >= 0 && drive < 4);
-	images[drive] = DSK_openImage(filename);
+	images[drive] = dsk::openImage(filename);
 	if (!images[drive])
 		return;
 	uint8_t b;

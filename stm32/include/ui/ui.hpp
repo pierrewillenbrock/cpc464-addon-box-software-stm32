@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <sigc++/sigc++.h>
 
+/** \brief Building blocks for a graphical user interface
+ */
 namespace ui {
   struct Point {
     uint16_t x;

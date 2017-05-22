@@ -6,112 +6,116 @@
 #include <string.h>
 #include <unistd.h>
 
-typedef struct
-{
-	unsigned char	C;
-	unsigned char	H;
-	unsigned char	R;
-	unsigned char	N;
-	unsigned char	ST1;
-	unsigned char	ST2;
-	unsigned char	pad0;
-	unsigned char	pad1;
-} DSKCHRN;
+namespace dsk {
+	typedef struct
+	{
+		unsigned char	C;
+		unsigned char	H;
+		unsigned char	R;
+		unsigned char	N;
+		unsigned char	ST1;
+		unsigned char	ST2;
+		unsigned char	pad0;
+		unsigned char	pad1;
+	} DSKCHRN;
 
-typedef struct
-{
-	char	TrackHeader[12];
-	char	pad0[4];
-	unsigned char	track;
-	unsigned char	side;
-	unsigned char	pad1[2];
-	unsigned char	BPS;
-	unsigned char	SPT;
-	unsigned char	Gap3;
-	unsigned char	FillerByte;
-	DSKCHRN	SectorIDs[29];
-} DSKTRACKHEADER;
+	typedef struct
+	{
+		char	TrackHeader[12];
+		char	pad0[4];
+		unsigned char	track;
+		unsigned char	side;
+		unsigned char	pad1[2];
+		unsigned char	BPS;
+		unsigned char	SPT;
+		unsigned char	Gap3;
+		unsigned char	FillerByte;
+		DSKCHRN	SectorIDs[29];
+	} DSKTRACKHEADER;
 
-typedef struct
-{
-	char	     DskHeader[34];
-	char	     DskCreator[14];
-	unsigned char	NumTracks;
-	unsigned char	NumSides;
-	unsigned char	TrackSizeLow;
-	unsigned char	TrackSizeHigh;
-	char		pad0[255-4-14-33];
-} DSKHEADER;
+	typedef struct
+	{
+		char	     DskHeader[34];
+		char	     DskCreator[14];
+		unsigned char	NumTracks;
+		unsigned char	NumSides;
+		unsigned char	TrackSizeLow;
+		unsigned char	TrackSizeHigh;
+		char		pad0[255-4-14-33];
+	} DSKHEADER;
 
-class DSK : public Disk {
-private:
-	unsigned short TrackSize;
-	void preloadReadComplete(int res, int errno_code, PReadCommand *command);
-	static void _preloadReadComplete(int res, int errno_code, PReadCommand *command);
-	void fillSectorInfoAndComplete();
-	void findSectorReadComplete(int res, int errno_code, PReadCommand *command);
-	static void _findSectorReadComplete(int res, int errno_code, PReadCommand *command);
-public:
-	bool probe(int fd);
-	virtual void close();
-	virtual void preloadCylinder(unsigned pcn);
-	virtual void findSector(DiskFindSectorCommand *command);
-};
+	class DSK : public Disk {
+	private:
+		unsigned short TrackSize;
+		void preloadReadComplete(int res, int errno_code, PReadCommand *command);
+		static void _preloadReadComplete(int res, int errno_code, PReadCommand *command);
+		void fillSectorInfoAndComplete();
+		void findSectorReadComplete(int res, int errno_code, PReadCommand *command);
+		static void _findSectorReadComplete(int res, int errno_code, PReadCommand *command);
+	public:
+		bool probe(int fd);
+		virtual void close();
+		virtual void preloadCylinder(unsigned pcn);
+		virtual void findSector(DiskFindSectorCommand *command);
+	};
 
-typedef struct
-{
-	unsigned char	C;
-	unsigned char	H;
-	unsigned char	R;
-	unsigned char	N;
-	unsigned char	ST1;
-	unsigned char	ST2;
-	unsigned char	SectorSizeLow;
-	unsigned char	SectorSizeHigh;
-} EXTDSKCHRN;
+	typedef struct
+	{
+		unsigned char	C;
+		unsigned char	H;
+		unsigned char	R;
+		unsigned char	N;
+		unsigned char	ST1;
+		unsigned char	ST2;
+		unsigned char	SectorSizeLow;
+		unsigned char	SectorSizeHigh;
+	} EXTDSKCHRN;
 
-typedef struct
-{
-	char	TrackHeader[12];
-	char	pad0[4];
-	unsigned char	track;
-	unsigned char	side;
-	unsigned char	pad1[2];
-	unsigned char	BPS;
-	unsigned char	SPT;
-	unsigned char	Gap3;
-	unsigned char	FillerByte;
-	EXTDSKCHRN	SectorIDs[29];
-} EXTDSKTRACKHEADER;
+	typedef struct
+	{
+		char	TrackHeader[12];
+		char	pad0[4];
+		unsigned char	track;
+		unsigned char	side;
+		unsigned char	pad1[2];
+		unsigned char	BPS;
+		unsigned char	SPT;
+		unsigned char	Gap3;
+		unsigned char	FillerByte;
+		EXTDSKCHRN	SectorIDs[29];
+	} EXTDSKTRACKHEADER;
 
-typedef struct
-{
-	char		DskHeader[34];
-	char		DskCreator[14];
-	unsigned char	NumTracks;
-	unsigned char	NumSides;
-	unsigned char	TrackSizeLow;
-	unsigned char	TrackSizeHigh;
-	char		TrackSizeTable[255-4-14-33];
-} EXTDSKHEADER;
+	typedef struct
+	{
+		char		DskHeader[34];
+		char		DskCreator[14];
+		unsigned char	NumTracks;
+		unsigned char	NumSides;
+		unsigned char	TrackSizeLow;
+		unsigned char	TrackSizeHigh;
+		char		TrackSizeTable[255-4-14-33];
+	} EXTDSKHEADER;
 
-class ExtDSK : public Disk {
-private:
-	unsigned short TrackSize;
-	std::vector<unsigned char> TrackSizeTable;
-	void preloadReadComplete(int res, int errno_code, PReadCommand *command);
-	static void _preloadReadComplete(int res, int errno_code, PReadCommand *command);
-	void fillSectorInfoAndComplete();
-	void findSectorReadComplete(int res, int errno_code, PReadCommand *command);
-	static void _findSectorReadComplete(int res, int errno_code, PReadCommand *command);
-public:
-	bool probe(int fd);
-	virtual void close();
-	virtual void preloadCylinder(unsigned pcn);
-	virtual void findSector(DiskFindSectorCommand *command);
-};
+	class ExtDSK : public Disk {
+	private:
+		unsigned short TrackSize;
+		std::vector<unsigned char> TrackSizeTable;
+		void preloadReadComplete(int res, int errno_code, PReadCommand *command);
+		static void _preloadReadComplete(int res, int errno_code, PReadCommand *command);
+		void fillSectorInfoAndComplete();
+		void findSectorReadComplete(int res, int errno_code, PReadCommand *command);
+		static void _findSectorReadComplete(int res, int errno_code, PReadCommand *command);
+	public:
+		bool probe(int fd);
+		virtual void close();
+		virtual void preloadCylinder(unsigned pcn);
+		virtual void findSector(DiskFindSectorCommand *command);
+	};
+}
 
-RefPtr<Disk> DSK_openImage(char const *filename) {
+using namespace dsk;
+
+RefPtr<Disk> dsk::openImage(char const *filename) {
 	bool write_protected = false;
 	int fd = open(filename, O_RDWR);
 	if (fd == -1) {

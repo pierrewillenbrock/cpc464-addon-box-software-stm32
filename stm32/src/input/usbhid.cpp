@@ -18,6 +18,8 @@
 #undef SUPPORT_STRINGS
 #undef SUPPORT_DESIGNATORS
 
+/** \brief Structures to support USB HID devices
+ */
 namespace usbhid {
 
 	struct UsageInfo {
@@ -219,20 +221,21 @@ namespace usbhid {
 
 using namespace usbhid;
 
-class USBHID : public USBDriver {
+class USBHID : public usb::Driver
+ {
 public:
-	virtual bool probe(RefPtr<USBDevice> device);
+	virtual bool probe(RefPtr<usb::Device> device);
 };
 
-class USBHIDDev : public USBDriverDevice, public InputDev {
+class USBHIDDev : public usb::DriverDevice, public input::Device {
 private:
-	RefPtr<USBDevice> device;
+	RefPtr<usb::Device> device;
 	enum { None, FetchReportDescriptor, InitialReportRequests, Configured, Disconnected
 	} state;
 
 	struct USBHIDDeviceURB {
 		USBHIDDev *_this;
-		URB u;
+		usb::URB u;
 	} irqurb, ctlurb;
 	std::vector<uint8_t> ctldata;
 	std::vector<uint8_t> irqdata;
@@ -240,11 +243,11 @@ private:
 	uint8_t input_endpoint;
 	uint8_t input_polling_interval;
 	uint8_t interfaceNumber;
-	void ctlurbCompletion(int result, URB *u);
-	static void _ctlurbCompletion(int result, URB *u);
+	void ctlurbCompletion(int result, usb::URB *u);
+	static void _ctlurbCompletion(int result, usb::URB *u);
 #ifdef SUPPORT_INPUTS
-	void irqurbCompletion(int result, URB */*u*/);
-	static void _irqurbCompletion(int result, URB *u);
+	void irqurbCompletion(int result, usb::URB */*u*/);
+	static void _irqurbCompletion(int result, usb::URB *u);
 #endif
 	void parseReportDescriptor(uint8_t *data, size_t size);
 
@@ -269,7 +272,7 @@ private:
 	void parseReport(std::vector<Report*> const &reports, std::vector<uint8_t> const &urbdata);
 #endif
 public:
-	USBHIDDev(RefPtr<USBDevice> device)
+	USBHIDDev(RefPtr<usb::Device> device)
 		: device(device)
 		{}
 	~USBHIDDev() {
@@ -292,13 +295,13 @@ public:
 #endif
 	}
 	virtual void interfaceClaimed(uint8_t interfaceNumber, uint8_t alternateSetting);
-	virtual void disconnected(RefPtr<USBDevice> /*device*/);
-	virtual InputControlInfo getControlInfo(uint16_t control_info_index);
+	virtual void disconnected(RefPtr<usb::Device> /*device*/);
+	virtual input::ControlInfo getControlInfo(uint16_t control_info_index);
 };
 
 static const uint16_t USBClassHID = 3;
 
-bool USBHID::probe(RefPtr<USBDevice> device) {
+bool USBHID::probe(RefPtr<usb::Device> device) {
 	//we need to find a HID class Interface in the configurations
 	auto const *selconf = device->getSelectedConfiguration();
 	if (!selconf) {
@@ -722,10 +725,10 @@ void USBHIDDev::parseReportDescriptor(uint8_t *data, size_t size) {
 	}
 }
 
-void USBHIDDev::ctlurbCompletion(int result, URB *u) {
+void USBHIDDev::ctlurbCompletion(int result, usb::URB *u) {
 	if (result != 0 && state != InitialReportRequests) {
 		//try again
-		USB_submitURB(u);
+		usb::submitURB(u);
 		return;
 	}
 	switch(state) {
@@ -765,7 +768,7 @@ void USBHIDDev::ctlurbCompletion(int result, URB *u) {
 			irqurb.u.buffer_len = irqdata.size();
 			irqurb.u.completion = _irqurbCompletion;
 
-			USB_submitURB(&irqurb.u);
+			usb::submitURB(&irqurb.u);
 		}
 #endif
 #ifdef SUPPORT_FEATURES
@@ -815,13 +818,13 @@ void USBHIDDev::ctlurbCompletion(int result, URB *u) {
 			ctlurb.u.buffer = ctldata.data();
 			ctlurb.u.buffer_len = ctldata.size();
 
-			USB_submitURB(&ctlurb.u);
+			usb::submitURB(&ctlurb.u);
 
 			state = InitialReportRequests;
 		} else
 			state = Configured;
 
-		Input_deviceAdd(this);
+		input::AddDevice (this);
 
 		break;
 	}
@@ -898,7 +901,7 @@ void USBHIDDev::ctlurbCompletion(int result, URB *u) {
 			ctlurb.u.buffer = ctldata.data();
 			ctlurb.u.buffer_len = ctldata.size();
 
-			USB_submitURB(&ctlurb.u);
+			usb::submitURB(&ctlurb.u);
 
 			state = InitialReportRequests;
 		} else
@@ -910,7 +913,7 @@ void USBHIDDev::ctlurbCompletion(int result, URB *u) {
 	}
 }
 
-void USBHIDDev::_ctlurbCompletion(int result, URB *u) {
+void USBHIDDev::_ctlurbCompletion(int result, usb::URB *u) {
 	USBHIDDeviceURB *du = container_of(u, USBHIDDeviceURB, u);
 	du->_this->ctlurbCompletion(result, u);
 }
@@ -960,7 +963,7 @@ void USBHIDDev::parseReport(std::vector<Report*> const &reports, std::vector<uin
 #endif
 
 #ifdef SUPPORT_INPUTS
-void USBHIDDev::irqurbCompletion(int result, URB */*u*/) {
+void USBHIDDev::irqurbCompletion(int result, usb::URB */*u*/) {
 	//this is called repeatedly by the usb subsystem.
 	if (result != 0)
 		return;
@@ -970,13 +973,13 @@ void USBHIDDev::irqurbCompletion(int result, URB */*u*/) {
 	parseReport(inputreports, irqdata);
 }
 
-void USBHIDDev::_irqurbCompletion(int result, URB *u) {
+void USBHIDDev::_irqurbCompletion(int result, usb::URB *u) {
 	USBHIDDeviceURB *du = container_of(u, USBHIDDeviceURB, u);
 	du->_this->irqurbCompletion(result, u);
 }
 
 void USBHIDDev::setValues(InOut *inout, std::vector<int32_t> &values) {
-	InputReport hir;
+	input::Report hir;
 	//set some good defaults
 	hir.device = this;
 	hir.flags = 0;
@@ -1098,7 +1101,7 @@ void USBHIDDev::interfaceClaimed(uint8_t interfaceNumber, uint8_t alternateSetti
 	ctlurb.u.buffer_len = ctldata.size();
 	ctlurb.u.completion = _ctlurbCompletion;
 
-	USB_submitURB(&ctlurb.u);
+	usb::submitURB(&ctlurb.u);
 
 	//a "report" is the content of the interrupt message.
 	//there may be multiple different reports. if that is the case,
@@ -1436,16 +1439,16 @@ void USBHIDDev::interfaceClaimed(uint8_t interfaceNumber, uint8_t alternateSetti
 	 */
 }
 
-void USBHIDDev::disconnected(RefPtr<USBDevice> /*device*/) {
+void USBHIDDev::disconnected(RefPtr<usb::Device> /*device*/) {
 	state = Disconnected;
-	USB_retireURB(&ctlurb.u);
+	usb::retireURB(&ctlurb.u);
 	ctlurb.u.endpoint = NULL;
-	USB_retireURB(&irqurb.u);
+	usb::retireURB(&irqurb.u);
 	irqurb.u.endpoint = NULL;
 }
 
-InputControlInfo USBHIDDev::getControlInfo(uint16_t control_info_index) {
-	InputControlInfo r;
+input::ControlInfo USBHIDDev::getControlInfo(uint16_t control_info_index) {
+	input::ControlInfo r;
 #if defined(SUPPORT_INPUTS) || defined(SUPPORT_OUTPUTS) || defined(SUPPORT_FEATURES)
 	if (control_info_index >= inouts.size())
 		return r;
@@ -1474,7 +1477,7 @@ InputControlInfo USBHIDDev::getControlInfo(uint16_t control_info_index) {
 static USBHID usbhid_driver;
 
 void USBHID_Setup() {
-	USB_registerDriver(&usbhid_driver);
+	usb::registerDriver(&usbhid_driver);
 }
 /*
  * UsageInfo: 5 words+dynamic(uint32_t)

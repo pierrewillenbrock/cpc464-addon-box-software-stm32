@@ -12,12 +12,13 @@
 #include <sstream>
 #include <iomanip>
 
-class USBDeviceNotify : public USBDriver {
+class USBDeviceNotify : public usb::Driver
+ {
 public:
-	virtual bool probe(RefPtr<USBDevice> device);
+	virtual bool probe(RefPtr<usb::Device> device);
 };
 
-bool USBDeviceNotify::probe(RefPtr<USBDevice> device) {
+bool USBDeviceNotify::probe(RefPtr<usb::Device> device) {
 	std::stringstream ss;
 	ss << "USB Device " << device->manufacturer() << " " << device->product()
 	<< "(" << std::setw(4) << std::setfill('0') << std::hex << device->getDeviceDescriptor().idVendor
@@ -30,5 +31,5 @@ bool USBDeviceNotify::probe(RefPtr<USBDevice> device) {
 static USBDeviceNotify usbdevicenotify_driver;
 
 void USBDeviceNotify_Setup() {
-	USB_registerDriver(&usbdevicenotify_driver);
+	usb::registerDriver(&usbdevicenotify_driver);
 }

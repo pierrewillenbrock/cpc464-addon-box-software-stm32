@@ -11,7 +11,7 @@
 #include <algorithm>
 #include <string.h>
 
-USBDevice::USBDevice(USBSpeed speed)
+usb::Device::Device(usb::Speed speed)
 	: speed(speed)
 	, raddress(0)
 	, eaddress(0)
@@ -20,26 +20,26 @@ USBDevice::USBDevice(USBSpeed speed)
 	, econfiguration(NULL)
 	, claimed(NULL)
 {
-	USBEndpoint *ne = new USBEndpoint(*this);
+	usb::Endpoint *ne = new usb::Endpoint(*this);
 	endpoints.push_back(ne);
 	assert(isRWPtr(ne));
-	ne->direction = USBEndpoint::HostToDevice;
-	ne->type = USBEndpoint::Control;
+	ne->direction = usb::Endpoint::HostToDevice;
+	ne->type = usb::Endpoint::Control;
 	ne->address = 0;
 	ne->max_packet_length = 8;
 }
 
-USBDevice::~USBDevice() {
+usb::Device::~Device() {
 	if (state == Address)
-		USB_activationComplete();
-	USB_deactivateAddress(eaddress);
+		usb::activationComplete();
+	usb::deactivateAddress(eaddress);
 	for(auto ep : endpoints) {
-		USB_killEndpoint(ep);
+		usb::killEndpoint(ep);
 		delete ep;
 	}
 }
 
-USBDevice::Configuration::Configuration(std::vector<uint8_t> const &descriptors) {
+usb::Device::Configuration::Configuration(std::vector<uint8_t> const &descriptors) {
 	uint8_t const *dp = descriptors.data();
 	uint8_t const *de = dp + descriptors.size();
 	memcpy(&descriptor, dp, sizeof(descriptor));
@@ -113,7 +113,7 @@ USBDevice::Configuration::Configuration(std::vector<uint8_t> const &descriptors)
 	}
 }
 
-void USBDevice::prepareStringFetch(uint8_t id) {
+void usb::Device::prepareStringFetch(uint8_t id) {
 
 	urb.u.setup.bmRequestType = 0x80;
 	urb.u.setup.bRequest = 6;
@@ -125,7 +125,7 @@ void USBDevice::prepareStringFetch(uint8_t id) {
 	urb.u.buffer_len = descriptordata.size();
 }
 
-void USBDevice::prepareConfigurationFetch(uint8_t id) {
+void usb::Device::prepareConfigurationFetch(uint8_t id) {
 
 	urb.u.setup.bmRequestType = 0x80;
 	urb.u.setup.bRequest = 6;
@@ -137,7 +137,7 @@ void USBDevice::prepareConfigurationFetch(uint8_t id) {
 	urb.u.buffer_len = descriptordata.size();
 }
 
-void USBDevice::urbCompletion(int result, URB *u) {
+void usb::Device::urbCompletion(int result, URB *u) {
 	assert(isRWPtr(u));
 	if (state == DescDevice8) {
 		if (result != 0 && u->buffer_received < 8) {
@@ -153,14 +153,14 @@ void USBDevice::urbCompletion(int result, URB *u) {
 			u->buffer_len = descriptordata.size();
 
 			//try again
-			USB_submitURB(u);
+			usb::submitURB(u);
 			return;
 		}
 	} else {
 		if (result != 0) {
 			LogEvent("USBDevice: Resend");
 			//try again
-			USB_submitURB(u);
+			usb::submitURB(u);
 			return;
 		}
 	}
@@ -171,7 +171,7 @@ void USBDevice::urbCompletion(int result, URB *u) {
 		//to update our effective address
 		eaddress = u->setup.wValue;
 		//address has been handled, can activate another device.
-		USB_activationComplete();
+		usb::activationComplete();
 		//now the device is in "Address" mode. need to fetch the
 		//configurations and let a driver select one. then we go to "Configured"
 		u->setup.bmRequestType = 0x80;
@@ -184,7 +184,7 @@ void USBDevice::urbCompletion(int result, URB *u) {
 		u->buffer_len = descriptordata.size();
 
 		state = DescDevice8;
-		USB_submitURB(u);
+		usb::submitURB(u);
 		break;
 	}
 	case DescDevice8: {
@@ -201,7 +201,7 @@ void USBDevice::urbCompletion(int result, URB *u) {
 			urb.u.buffer_len = descriptordata.size();
 
 			state = DescDevice;
-			USB_submitURB(&urb.u);
+			usb::submitURB(&urb.u);
 			break;
 		} else {
 			//we have all the data needed
@@ -217,21 +217,21 @@ void USBDevice::urbCompletion(int result, URB *u) {
 		if (deviceDescriptor.iManufacturer) {
 			prepareStringFetch(deviceDescriptor.iManufacturer);
 			state = FetchManuString;
-			USB_submitURB(&urb.u);
+			usb::submitURB(&urb.u);
 		} else if (deviceDescriptor.iProduct) {
 			prepareStringFetch(deviceDescriptor.iProduct);
 			state = FetchProdString;
-			USB_submitURB(&urb.u);
+			usb::submitURB(&urb.u);
 		} else if (deviceDescriptor.bNumConfigurations > 0) {
 		        prepareConfigurationFetch(configurations.size());
 			state = FetchConfigurations;
-			USB_submitURB(&urb.u);
+			usb::submitURB(&urb.u);
 		} else {
 			state = Unconfigured;
 			descriptordata.clear();
 			descriptordata.shrink_to_fit();
 			urb.u.endpoint = NULL;
-			USB_registerDevice(this);
+			usb::registerDevice(this);
 		}
 		break;
 	case FetchManuString: {
@@ -244,7 +244,7 @@ void USBDevice::urbCompletion(int result, URB *u) {
 			descriptordata.resize(d->bLength);
 			urb.u.buffer = descriptordata.data();
 			urb.u.buffer_len = descriptordata.size();
-			USB_submitURB(&urb.u);
+			usb::submitURB(&urb.u);
 			break;
 		}
 
@@ -255,17 +255,17 @@ void USBDevice::urbCompletion(int result, URB *u) {
 		if (deviceDescriptor.iProduct) {
 			prepareStringFetch(deviceDescriptor.iProduct);
 			state = FetchProdString;
-			USB_submitURB(&urb.u);
+			usb::submitURB(&urb.u);
 		} else if (deviceDescriptor.bNumConfigurations > configurations.size()) {
 		        prepareConfigurationFetch(configurations.size());
 			state = FetchConfigurations;
-			USB_submitURB(&urb.u);
+			usb::submitURB(&urb.u);
 		} else {
 			state = Unconfigured;
 			descriptordata.clear();
 			descriptordata.shrink_to_fit();
 			urb.u.endpoint = NULL;
-			USB_registerDevice(this);
+			usb::registerDevice(this);
 		}
 		break;
 	}
@@ -279,7 +279,7 @@ void USBDevice::urbCompletion(int result, URB *u) {
 			descriptordata.resize(d->bLength);
 			urb.u.buffer = descriptordata.data();
 			urb.u.buffer_len = descriptordata.size();
-			USB_submitURB(&urb.u);
+			usb::submitURB(&urb.u);
 			break;
 		}
 
@@ -290,13 +290,13 @@ void USBDevice::urbCompletion(int result, URB *u) {
 		if (deviceDescriptor.bNumConfigurations > configurations.size()) {
 		        prepareConfigurationFetch(configurations.size());
 			state = FetchConfigurations;
-			USB_submitURB(&urb.u);
+			usb::submitURB(&urb.u);
 		} else {
 			state = Unconfigured;
 			descriptordata.clear();
 			descriptordata.shrink_to_fit();
 			urb.u.endpoint = NULL;
-			USB_registerDevice(this);
+			usb::registerDevice(this);
 		}
 		break;
 	}
@@ -310,7 +310,7 @@ void USBDevice::urbCompletion(int result, URB *u) {
 			descriptordata.resize(d->wTotalLength);
 			urb.u.buffer = descriptordata.data();
 			urb.u.buffer_len = descriptordata.size();
-			USB_submitURB(&urb.u);
+			usb::submitURB(&urb.u);
 			break;
 		}
 
@@ -319,13 +319,13 @@ void USBDevice::urbCompletion(int result, URB *u) {
 		if (deviceDescriptor.bNumConfigurations > configurations.size()) {
 		        prepareConfigurationFetch(configurations.size());
 			state = FetchConfigurations;
-			USB_submitURB(&urb.u);
+			usb::submitURB(&urb.u);
 		} else {
 			state = Unconfigured;
 			descriptordata.clear();
 			descriptordata.shrink_to_fit();
 			urb.u.endpoint = NULL;
-			USB_registerDevice(this);
+			usb::registerDevice(this);
 		}
 		break;
 	}
@@ -386,18 +386,18 @@ void USBDevice::urbCompletion(int result, URB *u) {
 	}
 }
 
-void USBDevice::_urbCompletion(int result, URB *u) {
+void usb::Device::_urbCompletion(int result, URB *u) {
 	USBDeviceURB *du = container_of(u, USBDeviceURB, u);
 	assert(isRWPtr(du));
 	assert(isRWPtr(du->_this));
 	du->_this->urbCompletion(result, u);
 }
 
-void USBDevice::activate() {
+void usb::Device::activate() {
 	//device now is in "Default" state.
 	//give it an address.
 	//then prepare an URB to switch to that address
-	raddress = USB_getNextAddress();
+	raddress = usb::getNextAddress();
 	eaddress = 0; //default address
 	state = Address;
 	urb._this = this;
@@ -411,16 +411,16 @@ void USBDevice::activate() {
 	urb.u.buffer_len = 0;
 	urb.u.completion = _urbCompletion;
 
-	USB_submitURB(&urb.u);
+	usb::submitURB(&urb.u);
 }
 
-void USBDevice::disconnected() {
+void usb::Device::disconnected() {
 	//also trigger all that is needed to drop all the references to us
 	//if that is not done otherwise.
 	if (state == Address)
-		USB_activationComplete();
+		usb::activationComplete();
 	state = Disconnected;
-	USB_unregisterDevice(this);
+	usb::unregisterDevice(this);
 
 	if (rconfiguration) {
 		assert(isRWPtr(rconfiguration));
@@ -436,17 +436,17 @@ void USBDevice::disconnected() {
 		}
 	}
 
-	USB_deactivateAddress(eaddress);
+	usb::deactivateAddress(eaddress);
 
 	ISR_Guard g;
 	for(auto ep : endpoints) {
-		USB_killEndpoint(ep);
+		usb::killEndpoint(ep);
 		delete ep;
 	}
 	endpoints.clear();
 }
 
-RefPtr<USBEndpoint> USBDevice::getEndpoint(uint8_t address) {
+RefPtr<usb::Endpoint> usb::Device::getEndpoint(uint8_t address) {
 	auto it = std::find_if(endpoints.begin(), endpoints.end(),
 			       [address](auto &e){
 				       assert(isRWPtr(e));
@@ -458,7 +458,7 @@ RefPtr<USBEndpoint> USBDevice::getEndpoint(uint8_t address) {
 	return NULL;
 }
 
-void USBDevice::selectConfiguration(uint8_t bConfigurationValue) {
+void usb::Device::selectConfiguration(uint8_t bConfigurationValue) {
 	//if no configuration is selected, the device must essentially be idle.
 	ISR_Guard g;
 	assert(state == Unconfigured);//we can support changing during Configured, but then all Interfaces must be unclaimed.
@@ -481,10 +481,10 @@ void USBDevice::selectConfiguration(uint8_t bConfigurationValue) {
 	urb.u.buffer_len = 0;
 	urb.u.completion = _urbCompletion;
 
-	USB_submitURB(&urb.u);
+	usb::submitURB(&urb.u);
 }
 
-void USBDevice::configureInterfaces() {
+void usb::Device::configureInterfaces() {
 	if (!econfiguration || state != Configured)
 		return;
 
@@ -505,7 +505,7 @@ void USBDevice::configureInterfaces() {
 				urb.u.buffer_len = 0;
 				urb.u.completion = _urbCompletion;
 
-				USB_submitURB(&urb.u);
+				usb::submitURB(&urb.u);
 				return;
 			} else {
 				intf.eAlternateSetting =
@@ -519,9 +519,9 @@ void USBDevice::configureInterfaces() {
 	}
 }
 
-bool USBDevice::claimInterface(uint8_t bInterfaceNumber,
+bool usb::Device::claimInterface(uint8_t bInterfaceNumber,
 			       uint8_t bAlternateSetting,
-			       USBDriverDevice *dev) {
+			       usb::DriverDevice *dev) {
 	ISR_Guard g;
 	if (!rconfiguration)
 		return false;
@@ -552,7 +552,7 @@ bool USBDevice::claimInterface(uint8_t bInterfaceNumber,
 	return true;
 }
 
-bool USBDevice::claimDevice(USBDriverDevice *dev) {
+bool usb::Device::claimDevice(usb::DriverDevice *dev) {
 	ISR_Guard g;
 	if (!rconfiguration)
 		return false;
@@ -571,7 +571,7 @@ bool USBDevice::claimDevice(USBDriverDevice *dev) {
 	return true;
 }
 
-void USBDevice::updateEndpoints(Interface &intf) {
+void usb::Device::updateEndpoints(Interface &intf) {
 	for(auto &altset : intf.alternateSettings) {
 		for(auto &ep : altset.endpoints) {
 			auto eit = std::find_if(endpoints.begin(), endpoints.end(),
@@ -581,9 +581,9 @@ void USBDevice::updateEndpoints(Interface &intf) {
 							ep.descriptor.bEndpointAddress;
 						});
 			if (eit != endpoints.end()) {
-				USBEndpoint * uep = *eit;
+				usb::Endpoint * uep = *eit;
 				endpoints.erase(eit);
-				USB_killEndpoint(uep);
+				usb::killEndpoint(uep);
 				delete uep;
 			}
 		}
@@ -597,26 +597,26 @@ void USBDevice::updateEndpoints(Interface &intf) {
 	assert(ait != intf.alternateSettings.end());
 	auto &altset = *ait;
 	for(auto &ep : altset.endpoints) {
-		USBEndpoint *ne = new USBEndpoint(*this);;
+		usb::Endpoint *ne = new usb::Endpoint(*this);;
 		assert(isRWPtr(ne));
 		endpoints.push_back(ne);
 		ne->direction =
 			(ep.descriptor.bEndpointAddress & 0x80)?
-			USBEndpoint::DeviceToHost:USBEndpoint::HostToDevice;
+			usb::Endpoint::DeviceToHost:usb::Endpoint::HostToDevice;
 		ne->dataToggleIN = false;
 		ne->dataToggleOUT = false;
 		switch(ep.descriptor.bmAttributes & 0x03) {
 		case 0x00:
-			ne->type = USBEndpoint::Control;
+			ne->type = usb::Endpoint::Control;
 			break;
 		case 0x01:
-			ne->type = USBEndpoint::ISO;
+			ne->type = usb::Endpoint::ISO;
 			break;
 		case 0x02:
-			ne->type = USBEndpoint::Bulk;
+			ne->type = usb::Endpoint::Bulk;
 			break;
 		case 0x03:
-			ne->type = USBEndpoint::IRQ;
+			ne->type = usb::Endpoint::IRQ;
 			break;
 		}
 		ne->address = ep.descriptor.bEndpointAddress;

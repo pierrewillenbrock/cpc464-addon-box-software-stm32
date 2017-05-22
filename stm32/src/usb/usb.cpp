@@ -1,10 +1,12 @@
-/* todo: if we detect a hung bus (i.E. when a URB takes a long time
+/** \todo: if we detect a hung bus (i.E. when a URB takes a long time
    to complete, like across a SOF), we set the PENA bit of HPRT.
    if there is no device connected at that point, all is fine. otherwise,
    we may have to do another bus reset cycle. need to figure that last part
    out while doing. but first, need the timeout infrastructure.
+   \todo there are still initialisation troubles when devices are plugged into
+   the port at startup, or when devices are plugged into the hub while it is
+   getting plugged. need reproduction steps for all of the above.
  */
-
 
 #include <usb/usb.hpp>
 
@@ -27,7 +29,7 @@
 #include <usb/usbendpoint.hpp>
 #include <usb/urb.hpp>
 
-static RefPtr<USBDevice> rootDevice = NULL;///< \brief The current root device.
+static RefPtr<usb::Device> rootDevice = NULL;///< \brief The current root device.
 static volatile uint8_t usb_address = 1;///< \brief the next usb_address being used
 
 struct USBDeviceActivation {
@@ -35,8 +37,8 @@ struct USBDeviceActivation {
 	void (*activate)(void *data);
 };
 
-static std::deque<URB*> USB_nonperiodicQueue;///< \brief Queue holding non-periodic URBs
-static std::multimap<unsigned int,URB*> USB_periodicQueue;///< \brief Ordered queue holding periodic URBs
+static std::deque<usb::URB*> USB_nonperiodicQueue;///< \brief Queue holding non-periodic URBs
+static std::multimap<unsigned int,usb::URB*> USB_periodicQueue;///< \brief Ordered queue holding periodic URBs
 /** \brief Queue holding activation requests
  *
  * Activations need to be serialized since all devices start out on
@@ -44,9 +46,9 @@ static std::multimap<unsigned int,URB*> USB_periodicQueue;///< \brief Ordered qu
  */
 static std::deque<USBDeviceActivation> USB_activationQueue;
 static USBDeviceActivation USB_activationCurrent;///< \brief Current device activation
-static std::array<USBChannel,8> channels({{0,1,2,3,4,5,6,7}}); ///< \brief All USB Channels
+static std::array<usb::Channel,8> channels({{0,1,2,3,4,5,6,7}}); ///< \brief All USB Channels
 static unsigned int frameCounter = 0;///< Number of frames since the begin of time
-unsigned int USB_frameChannelTime = 0;///< Time allocated by channels
+unsigned int usb::frameChannelTime = 0;///< Time allocated by channels
 
 //static const unsigned int USB_frameEndTime = 480; ///< Hold off time at the end of the frame
 static const unsigned int USB_frameEndTime = 24000;
@@ -138,7 +140,7 @@ static void USB_RegInit() {
 		| OTG_GINTMSK_MMISM;
 }
 
-void USB_Setup() {
+void usb::Setup() {
 	//setup rcc
 	RCC_AHB2PeriphClockCmd(RCC_AHB2Periph_OTG_FS, ENABLE);
 	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);
@@ -168,10 +170,10 @@ void USB_Setup() {
 	USBHUB_Setup();
 }
 
-static std::vector<USBDriver *> usb_drivers;
-static std::deque<RefPtr<USBDevice> > usb_devices;
+static std::vector<usb::Driver *> usb_drivers;
+static std::deque<RefPtr<usb::Device> > usb_devices;
 
-void USB_registerDevice(USBDevice *device) {
+void usb::registerDevice ( usb::Device *device) {
 	LogEvent("USB_registerDevice");
 	ISR_Guard g;
 	usb_devices.push_back(device);
@@ -182,7 +184,7 @@ void USB_registerDevice(USBDevice *device) {
 	}
 }
 
-void USB_killEndpoint(USBEndpoint *endpoint) {
+void usb::killEndpoint ( usb::Endpoint *endpoint) {
 	ISR_Guard g;
 	for(auto &ch : channels)
 		ch.killEndpoint(endpoint);
@@ -194,7 +196,7 @@ void USB_killEndpoint(USBEndpoint *endpoint) {
 	}
 }
 
-void USB_unregisterDevice(USBDevice *device) {
+void usb::unregisterDevice ( usb::Device *device) {
 	LogEvent("USB_unregisterDevice");
 	ISR_Guard g;
 	for(auto it = usb_devices.begin(); it != usb_devices.end(); it++) {
@@ -205,7 +207,7 @@ void USB_unregisterDevice(USBDevice *device) {
 	}
 }
 
-void USB_registerDriver(USBDriver *driver) {
+void usb::registerDriver ( usb::Driver *driver) {
 	ISR_Guard g;
 	usb_drivers.push_back(driver);
 	for(auto &d : usb_devices) {
@@ -222,15 +224,15 @@ void OTG_FS_WKUP_IRQHandler() { //do we need this one?
  *
  * \returns Time remaining in this frame in cycles of 48MHz
  */
-unsigned int USB_frameTimeRemaining() {
+unsigned int usb::frameTimeRemaining() {
 	unsigned int mult = (otgh->HCFG == OTG_HCFG_FSLSPCS_48MHZ)?1:8;
-	int res = (int)(((otgh->HFNUM & 0xffff0000) >> 16)*mult)-(int)USB_frameChannelTime-(int)USB_frameEndTime;
+	int res = (int)(((otgh->HFNUM & 0xffff0000) >> 16)*mult)-(int)usb::frameChannelTime-(int)USB_frameEndTime;
 	if (res < 0)
 		return 0;
 	return res;
 }
 
-void USB_submitURB(URB *u) {
+void usb::submitURB ( usb::URB *u) {
 	//so, what do we do here?
 	//check if we have a free channel. if not => queue it.
 	//allocate said channel and prepare it
@@ -238,12 +240,12 @@ void USB_submitURB(URB *u) {
 	//trigger channel?
 	ISR_Guard g;
 	assert(u->endpoint);
-	if (USB_frameTimeRemaining() > u->thisFrameTime()) {
+	if ( usb::frameTimeRemaining() > u->thisFrameTime()) {
 		for(auto &ch : channels) {
 			if (ch.isUnused()) {
 				ch.setupForURB(u);
-				if (u->endpoint->type == USBEndpoint::IRQ ||
-					u->endpoint->type == USBEndpoint::ISO) {
+				if (u->endpoint->type == usb::Endpoint::IRQ ||
+					u->endpoint->type == usb::Endpoint::ISO) {
 					USB_periodicQueue.insert(
 						std::make_pair(frameCounter+u->pollingInterval,u));
 				}
@@ -252,14 +254,14 @@ void USB_submitURB(URB *u) {
 		}
 	}
 	//waiting for a free channel
-	if (u->endpoint->type == USBEndpoint::Bulk ||
-		u->endpoint->type == USBEndpoint::Control)
+	if (u->endpoint->type == usb::Endpoint::Bulk ||
+		u->endpoint->type == usb::Endpoint::Control)
 		USB_nonperiodicQueue.push_back(u);
 	else
 		USB_periodicQueue.insert(std::make_pair(frameCounter,u));
 }
 
-void USB_retireURB(struct URB *u) {
+void usb::retireURB (struct usb::URB *u) {
 	ISR_Guard g;
 	for(auto &ch : channels) {
 		if (!ch.isUnused())
@@ -283,12 +285,12 @@ void USB_retireURB(struct URB *u) {
 	}
 }
 
-URB *USB_getNextNonperiodicURB() {
+usb::URB *usb::getNextNonperiodicURB() {
 	ISR_Guard g;
-	URB *u = NULL;
+	usb::URB *u = NULL;
 	if (!USB_nonperiodicQueue.empty()) {
 		u = USB_nonperiodicQueue.front();
-		if (USB_frameTimeRemaining() > u->thisFrameTime())
+		if ( usb::frameTimeRemaining() > u->thisFrameTime())
 			USB_nonperiodicQueue.pop_front();
 		else
 			u = NULL;
@@ -296,14 +298,14 @@ URB *USB_getNextNonperiodicURB() {
 	return u;
 }
 
-URB *USB_getNextPeriodicURB() {
+usb::URB *usb::getNextPeriodicURB() {
 	ISR_Guard g;
-	URB *u = NULL;
+	usb::URB *u = NULL;
 	if (!USB_periodicQueue.empty()) {
 		auto it = USB_periodicQueue.begin();
-		std::pair<unsigned int,URB*> front = *it;
+		std::pair<unsigned int,usb::URB*> front = *it;
 		if (front.first <= frameCounter &&
-			             USB_frameTimeRemaining() > front.second->thisFrameTime()) {
+			             usb::frameTimeRemaining() > front.second->thisFrameTime()) {
 			u = front.second;
 			USB_periodicQueue.erase(it);
 			front.first += u->pollingInterval;
@@ -313,14 +315,14 @@ URB *USB_getNextPeriodicURB() {
 	return u;
 }
 
-URB *USB_getNextURB() {
-	URB *u = USB_getNextPeriodicURB();
+usb::URB *usb::getNextURB() {
+	usb::URB *u = usb::getNextPeriodicURB();
 	if (!u)
-		u = USB_getNextNonperiodicURB();
+		u = usb::getNextNonperiodicURB();
 	return u;
 }
 
-void USB_queueDeviceActivation(void (*activate)(void*data),void *data) {
+void usb::queueDeviceActivation (void (*activate)(void*data),void *data) {
 	LogEvent("USB_queueDeviceActivation");
 	bool directActivate = false;
 	{
@@ -342,7 +344,7 @@ void USB_queueDeviceActivation(void (*activate)(void*data),void *data) {
 
 static std::bitset<128> used_addresses;
 
-void USB_activationComplete() {
+void usb::activationComplete() {
 	LogEvent("USB_activationComplete");
 	{
 		ISR_Guard g;
@@ -358,7 +360,7 @@ void USB_activationComplete() {
 		USB_activationCurrent.activate(USB_activationCurrent.data);
 }
 
-uint8_t USB_getNextAddress() {
+uint8_t usb::getNextAddress() {
 	ISR_Guard g;
 	uint8_t addr = 0;
 	if (usb_address == 0 || usb_address > 127)
@@ -375,7 +377,7 @@ uint8_t USB_getNextAddress() {
 	return addr;
 }
 
-void USB_deactivateAddress(uint8_t address) {
+void usb::deactivateAddress (uint8_t address) {
 	ISR_Guard g;
 	used_addresses[address] = false;
 }
@@ -387,9 +389,9 @@ static void activateRootDevice(void */*unused*/) {
 	//device reset and only then create the device.
 	if ((otgh->HPRT & OTG_HPRT_PSPD_MASK) ==
 	    OTG_HPRT_PSPD_FS) {
-		rootDevice = new USBDevice(USBSpeed::Full);
+		rootDevice = new usb::Device (usb::Speed::Full);
 	} else {
-		rootDevice = new USBDevice(USBSpeed::Low);
+		rootDevice = new usb::Device (usb::Speed::Low);
 	}
 	rootDevice->activate();
 }
@@ -469,7 +471,7 @@ void OTG_FS_IRQHandler() {
 						usb_timer_handle = Timer_Oneshot(11000, USB_PortResetTimer, NULL);
 					} else {
 						//now we need to create the new device
-						USB_queueDeviceActivation(activateRootDevice, NULL);
+						usb::queueDeviceActivation (activateRootDevice, NULL);
 					}
 				} else if ((otgh->HPRT & OTG_HPRT_PSPD_MASK) ==
 				    OTG_HPRT_PSPD_LS) {
@@ -493,7 +495,7 @@ void OTG_FS_IRQHandler() {
 						usb_timer_handle = Timer_Oneshot(11000, USB_PortResetTimer, NULL);
 					} else {
 						//now we need to create the new device
-						USB_queueDeviceActivation(activateRootDevice, NULL);
+						usb::queueDeviceActivation (activateRootDevice, NULL);
 					}
 				} else {
 					assert(0);
@@ -572,7 +574,7 @@ void OTG_FS_IRQHandler() {
 		for(auto &ch : channels) {
 			ISR_Guard g;
 			if (ch.isUnused()) {
-				URB *u = USB_getNextPeriodicURB();
+				usb::URB *u = usb::getNextPeriodicURB();
 				if (u)
 					ch.setupForURB(u);
 			}
@@ -585,7 +587,7 @@ void OTG_FS_IRQHandler() {
 		for(auto &ch : channels) {
 			ISR_Guard g;
 			if (ch.isUnused()) {
-				URB *u = USB_getNextNonperiodicURB();
+				usb::URB *u = usb::getNextNonperiodicURB();
 				if (u)
 					ch.setupForURB(u);
 			}

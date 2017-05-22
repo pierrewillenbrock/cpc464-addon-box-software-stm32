@@ -335,7 +335,7 @@ int main()
 		__WFI();
 	}
 
-	VFS_Setup();
+	vfs::Setup();
 
 	FPGAComm_Setup();
 	Sprite_Setup();
@@ -350,7 +350,7 @@ int main()
 	ui::Notification_Setup();
 	USBDeviceNotify_Setup(); // must be first usb driver
 	USBHID_Setup();
-	USB_Setup();
+	usb::Setup();
 
 	while(1) {
 		char name[6] = {0xff, 0}; //name and revision
@@ -484,31 +484,34 @@ void addDeferredWork(sigc::slot<void> const &work) {
 	deferred_work.push_back(work);
 }
 
-static std::unordered_map<RefPtr<Inode>, std::string> filesystems;
+static std::unordered_map<RefPtr<vfs::Inode>, std::string> filesystems;
 
-void VFS_RegisterFilesystem(char const *type, RefPtr<Inode> ino) {
-	//find a new name in /media
-	int num = 0;
-	std::stringstream ss;
-	while(num < 20) {
-		ss.str("");
-		ss << "/media/" << type << num;
-		if(mkdir(ss.str().c_str(), S_IRWXU | S_IRWXG | S_IRWXO) != -1)
-			break;
-		num++;
+
+namespace vfs {
+	void RegisterFilesystem(char const *type, RefPtr<Inode> ino) {
+		//find a new name in /media
+		int num = 0;
+		std::stringstream ss;
+		while(num < 20) {
+			ss.str("");
+			ss << "/media/" << type << num;
+			if(mkdir(ss.str().c_str(), S_IRWXU | S_IRWXG | S_IRWXO) != -1)
+				break;
+			num++;
+		}
+		if (num >= 20)
+			return;
+
+		std::string name = ss.str();
+
+		filesystems.insert(std::make_pair(ino,name));
+		Mount(name.c_str(),ino);
 	}
-	if (num >= 20)
-		return;
 
-	std::string name = ss.str();
-
-	filesystems.insert(std::make_pair(ino,name));
-	VFS_Mount(name.c_str(),ino);
-}
-
-void VFS_UnregisterFilesystem(RefPtr<Inode> ino) {
-	VFS_Unmount(filesystems[ino].c_str());
-	filesystems.erase(ino);
+	void UnregisterFilesystem(RefPtr<Inode> ino) {
+		Unmount(filesystems[ino].c_str());
+		filesystems.erase(ino);
+	}
 }
 
 void FDC_MotorOn() {

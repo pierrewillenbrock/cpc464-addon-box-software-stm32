@@ -15,37 +15,149 @@
 #include <fs/vfs.hpp>
 #include <bits.h>
 
-struct File : public Refcounted<File>  {
-	RefPtr<Dentry> dentry;
-	int openflags;
-	size_t offset;
-	File(RefPtr<Dentry> dentry, int openflags)
+namespace vfs {
+	struct File : public Refcounted<File>  {
+		RefPtr<Dentry> dentry;
+		int openflags;
+		size_t offset;
+		File(RefPtr<Dentry> dentry, int openflags)
 		: dentry(dentry)
 		, openflags(openflags)
 		, offset(0)
 		{}
-};
-/* logical structuring of file access primitives:
-   FileDescriptors can point to the same data, but don't have to
-   FileDescriptors can share offsets, but don't have to
-   FileDescriptors can point to the same Filename, but don't have to
+	};
+	/* logical structuring of file access primitives:
+	 *  FileDescriptors can point to the same data, but don't have to
+	 *  FileDescriptors can share offsets, but don't have to
+	 *  FileDescriptors can point to the same Filename, but don't have to
+	 *
+	 *  Inode          => A particular ordered collection of bytes on storage.
+	 *                    Properties: data, size, permissions, ... (see stat)
+	 *  Dentry         => A filename pointing to an Inode. Multiple Files may point
+	 *                    to the same Inode.
+	 *                    Key: name
+	 *                    Properties: pointer to Inode
+	 *  File           => A pointer into an Inode, used for accessing data.
+	 *                    Properties: position, pointer to Inode
+	 *  FileDescriptor => A number used to access and OpenInode.
+	 *                    Key: number
+	 *                    Properties: pointer to an OpenInode
+	 */
 
-   Inode          => A particular ordered collection of bytes on storage.
-                     Properties: data, size, permissions, ... (see stat)
-   Dentry         => A filename pointing to an Inode. Multiple Files may point
-                     to the same Inode.
-                     Key: name
-                     Properties: pointer to Inode
-   File           => A pointer into an Inode, used for accessing data.
-                     Properties: position, pointer to Inode
-   FileDescriptor => A number used to access and OpenInode.
-                     Key: number
-                     Properties: pointer to an OpenInode
- */
+	static std::vector<RefPtr<File> > fds;
 
-static std::vector<RefPtr<File> > fds;
+	static RefPtr<Dentry> rootDentry;
 
-static RefPtr<Dentry> rootDentry;
+	static volatile char stdout_buffer[256];
+
+	struct StdOutInode : public Inode {
+		StdOutInode() {
+			mode = S_IFCHR | S_IWUSR | S_IWGRP | S_IWOTH |
+			S_IRUSR | S_IRGRP | S_IROTH;
+		}
+		virtual _ssize_t pread(void */*ptr*/, size_t /*len*/, off_t /*offset*/) {
+			return 0;
+		}
+		virtual _ssize_t pwrite(const void *ptr, size_t len, off_t /*offset*/) {
+			//ignores offset
+			if (len > sizeof(stdout_buffer)) {
+				memcpy((void*)stdout_buffer,
+				       ((char*)ptr)+len-sizeof(stdout_buffer),
+				       sizeof(stdout_buffer));
+				return len;
+			}
+			memmove((void*)stdout_buffer,
+				(void*)(stdout_buffer+len),
+				sizeof(stdout_buffer)-len);
+			memcpy((void*)(stdout_buffer+sizeof(stdout_buffer)-len), ptr, len);
+			return len;
+		}
+	};
+
+	struct NullInode : public Inode {
+		NullInode() {
+			mode = S_IFCHR | S_IWUSR | S_IWGRP | S_IWOTH |
+			S_IRUSR | S_IRGRP | S_IROTH;
+		}
+		virtual _ssize_t pread(void */*ptr*/, size_t /*len*/, off_t /*offset*/) {
+			return 0;
+		}
+		virtual _ssize_t pwrite(const void */*ptr*/, size_t len, off_t /*offset*/) {
+			return len;
+		}
+	};
+
+	struct DirInode : public Inode {
+		std::unordered_map<std::string, RefPtr<Inode> > children;
+		virtual int mkdir(RefPtr<Dentry> dent, mode_t mode) {
+			ISR_Guard g;
+			assert(!dent->inode);
+			assert(dent->parent);
+			if (children.find(dent->name) != children.end()) {
+				errno = EEXIST;
+				return -1;
+			}
+			RefPtr<Inode> ino(new DirInode());
+			ino->mode = mode | S_IFDIR;
+			children.insert(std::make_pair
+			(dent->name, ino));
+			dent->inode = ino;
+			return 0;
+		}
+		virtual int lookup(RefPtr<Dentry> dent) {
+			ISR_Guard g;
+			assert(!dent->inode);
+			assert(dent->parent);
+			auto it = children.find(dent->name);
+			if (it == children.end()) {
+				errno = ENOENT;
+				return -1;
+			}
+			dent->inode = it->second;
+			return 0;
+		}
+		virtual int mknod(RefPtr<Dentry> dent, mode_t mode,
+				  RefPtr<Inode> ino) {
+			ISR_Guard g;
+			assert(!dent->inode);
+			assert(dent->parent);
+			if (children.find(dent->name) != children.end()) {
+				errno = EEXIST;
+				return -1;
+			}
+			ino->mode = mode;
+			children.insert(std::make_pair
+			(dent->name, ino));
+			dent->inode = ino;
+			return 0;
+				  }
+				  virtual int create(RefPtr<Dentry> /*dent*/, mode_t /*mode*/) {
+					  //if we want to support files in memory, this is the place
+					  //to implement them.
+					  //if a file exists, and its inode is known at this point,
+					  //the directory inode could fully initialize the dent and
+					  //insert it as well.
+					  errno = ENOTDIR;
+					  return -1;
+				  }
+				  //first d_off is -1, -2 and -3 are reserved, rest is free for use.
+				  virtual bool readdir(off_t &d_off, std::string &name) {
+					  ISR_Guard g;
+					  int i = 0;
+					  for(auto it = children.begin(); it != children.end(); it++, i++) {
+						  if (i == d_off+1) {
+							  d_off++;
+							  name = it->first;
+							  return true;
+						  }
+					  }
+					  return false;
+				  }
+	};
+
+}
+
+using namespace vfs;
 
 extern "C" {
 	_ssize_t _read_r(struct _reent *r, int file, void *ptr, size_t len);
@@ -58,117 +170,10 @@ extern "C" {
 	int access(const char *path, int mode);
 }
 
-static volatile char stdout_buffer[256];
-
-struct StdOutInode : public Inode {
-	StdOutInode() {
-		mode = S_IFCHR | S_IWUSR | S_IWGRP | S_IWOTH |
-			S_IRUSR | S_IRGRP | S_IROTH;
-	}
-	virtual _ssize_t pread(void */*ptr*/, size_t /*len*/, off_t /*offset*/) {
-		return 0;
-	}
-	virtual _ssize_t pwrite(const void *ptr, size_t len, off_t /*offset*/) {
-		//ignores offset
-		if (len > sizeof(stdout_buffer)) {
-			memcpy((void*)stdout_buffer,
-			       ((char*)ptr)+len-sizeof(stdout_buffer),
-			       sizeof(stdout_buffer));
-			return len;
-		}
-		memmove((void*)stdout_buffer,
-			(void*)(stdout_buffer+len),
-			sizeof(stdout_buffer)-len);
-		memcpy((void*)(stdout_buffer+sizeof(stdout_buffer)-len), ptr, len);
-		return len;
-	}
-};
-
-struct NullInode : public Inode {
-	NullInode() {
-		mode = S_IFCHR | S_IWUSR | S_IWGRP | S_IWOTH |
-			S_IRUSR | S_IRGRP | S_IROTH;
-	}
-	virtual _ssize_t pread(void */*ptr*/, size_t /*len*/, off_t /*offset*/) {
-		return 0;
-	}
-	virtual _ssize_t pwrite(const void */*ptr*/, size_t len, off_t /*offset*/) {
-		return len;
-	}
-};
-
-struct VFSDirInode : public Inode {
-	std::unordered_map<std::string, RefPtr<Inode> > children;
-	virtual int mkdir(RefPtr<Dentry> dent, mode_t mode) {
-		ISR_Guard g;
-		assert(!dent->inode);
-		assert(dent->parent);
-		if (children.find(dent->name) != children.end()) {
-			errno = EEXIST;
-			return -1;
-		}
-		RefPtr<Inode> ino(new VFSDirInode());
-		ino->mode = mode | S_IFDIR;
-		children.insert(std::make_pair
-				(dent->name, ino));
-		dent->inode = ino;
-		return 0;
-	}
-	virtual int lookup(RefPtr<Dentry> dent) {
-		ISR_Guard g;
-		assert(!dent->inode);
-		assert(dent->parent);
-		auto it = children.find(dent->name);
-		if (it == children.end()) {
-			errno = ENOENT;
-			return -1;
-		}
-		dent->inode = it->second;
-		return 0;
-	}
-	virtual int mknod(RefPtr<Dentry> dent, mode_t mode,
-			  RefPtr<Inode> ino) {
-		ISR_Guard g;
-		assert(!dent->inode);
-		assert(dent->parent);
-		if (children.find(dent->name) != children.end()) {
-			errno = EEXIST;
-			return -1;
-		}
-		ino->mode = mode;
-		children.insert(std::make_pair
-				(dent->name, ino));
-		dent->inode = ino;
-		return 0;
-	}
-	virtual int create(RefPtr<Dentry> /*dent*/, mode_t /*mode*/) {
-		//if we want to support files in memory, this is the place
-		//to implement them.
-		//if a file exists, and its inode is known at this point,
-		//the directory inode could fully initialize the dent and
-		//insert it as well.
-		errno = ENOTDIR;
-		return -1;
-	}
-	//first d_off is -1, -2 and -3 are reserved, rest is free for use.
-	virtual bool readdir(off_t &d_off, std::string &name) {
-		ISR_Guard g;
-		int i = 0;
-		for(auto it = children.begin(); it != children.end(); it++, i++) {
-			if (i == d_off+1) {
-				d_off++;
-				name = it->first;
-				return true;
-			}
-		}
-		return false;
-	}
-};
-
-void VFS_Setup() {
+void vfs::Setup() {
 	fds.resize(3); //space for stdin, stdout and stderr
 	rootDentry = new Dentry("", NULL);
-	rootDentry->inode = new VFSDirInode();
+	rootDentry->inode = new DirInode();
 	//this starts out empty, so we can mark it complete.
 	rootDentry->fully_populated = true;
 	rootDentry->parent = rootDentry;
@@ -585,7 +590,7 @@ int closedir (DIR *__dirp) {
 	return 0;
 }
 
-int VFS_Mount(const char *mountpoint, RefPtr<Inode> ino) {
+int vfs::Mount(const char *mountpoint, RefPtr<Inode> ino) {
 	ISR_Guard isrguard;
 	RefPtr<Dentry> dc = findDentry(mountpoint);
 	if (!dc->inode) {
@@ -602,7 +607,7 @@ int VFS_Mount(const char *mountpoint, RefPtr<Inode> ino) {
 	return 0;
 }
 
-int VFS_Unmount(const char *mountpoint) {
+int vfs::Unmount(const char *mountpoint) {
 	ISR_Guard isrguard;
 	RefPtr<Dentry> dc = findDentry(mountpoint);
 	if (!dc->inode) {

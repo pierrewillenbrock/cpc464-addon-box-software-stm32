@@ -1,4 +1,4 @@
-project(STM32)
+project("CPC464 AddOn Box - STM32")
 cmake_minimum_required(VERSION 2.6)
 
 #use -DCMAKE_TOOLCHAIN_FILE=/absolute/path/to/toolchain.cmake
@@ -143,10 +143,32 @@ add_executable(main
   )
 
 set_target_properties(main PROPERTIES
-  LINK_DEPENDS "${STM32_SOURCE_DIR}/link.ld"
-  LINK_FLAGS "-T \"${STM32_SOURCE_DIR}/link.ld\" -nostartfiles -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -O2 -Wl,--gc-section -Wl,--wrap=_calloc_r -Wl,--wrap=_free_r -Wl,--wrap=_malloc_r -Wl,--wrap=_memalign_r -Wl,--wrap=_realloc_r -Wl,--wrap=_valloc_r -Wl,--wrap=_pvalloc_r -Wl,--wrap=_malloc_stats_r -Wl,--wrap=_mallinfo_r")
+  LINK_DEPENDS "${PROJECT_SOURCE_DIR}/link.ld"
+  LINK_FLAGS "-T \"${PROJECT_SOURCE_DIR}/link.ld\" -nostartfiles -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -O2 -Wl,--gc-section -Wl,--wrap=_calloc_r -Wl,--wrap=_free_r -Wl,--wrap=_malloc_r -Wl,--wrap=_memalign_r -Wl,--wrap=_realloc_r -Wl,--wrap=_valloc_r -Wl,--wrap=_pvalloc_r -Wl,--wrap=_malloc_stats_r -Wl,--wrap=_mallinfo_r")
 
 set_target_properties(tester PROPERTIES
-  LINK_DEPENDS "${STM32_SOURCE_DIR}/link.ld"
-  LINK_FLAGS "-T \"${STM32_SOURCE_DIR}/link.ld\" -nostartfiles -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -O2 -Wl,--gc-section")
+  LINK_DEPENDS "${PROJECT_SOURCE_DIR}/link.ld"
+  LINK_FLAGS "-T \"${PROJECT_SOURCE_DIR}/link.ld\" -nostartfiles -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -O2 -Wl,--gc-section")
 
+# add a target to generate API documentation with Doxygen
+find_package(Doxygen)
+option(BUILD_DOCUMENTATION "Create and install the HTML based API documentation (requires Doxygen)" ${DOXYGEN_FOUND})
+
+if(BUILD_DOCUMENTATION)
+    if(NOT DOXYGEN_FOUND)
+        message(FATAL_ERROR "Doxygen is needed to build the documentation.")
+    endif()
+
+    set(doxyfile_in ${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in)
+    set(doxyfile ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
+
+    configure_file(${doxyfile_in} ${doxyfile} @ONLY)
+
+    add_custom_target(doc
+        COMMAND ${DOXYGEN_EXECUTABLE} ${doxyfile}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMENT "Generating API documentation with Doxygen"
+        VERBATIM)
+
+    install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/html DESTINATION share/doc)
+endif()

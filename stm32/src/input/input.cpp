@@ -2,28 +2,28 @@
 #include <input/input.hpp>
 #include <vector>
 
-static std::vector<InputDevListener*> listeners;
+static std::vector<input::DeviceListener*> listeners;
 
-void Input_deviceAdd(InputDev *dev) {
+void input::AddDevice ( input::Device *dev) {
 	for(auto &l : listeners) {
 		l->inputDeviceAdd(dev);
 	}
 }
 
-void Input_registerDeviceListener(InputDevListener *listener) {
+void input::registerDeviceListener ( input::DeviceListener *listener) {
 	listeners.push_back(listener);
 }
 
-void InputDev::addListener(RefPtr<InputListener> listener) {
+void input::Device::addListener(RefPtr<input::Listener> listener) {
 	listeners.push_back(listener);
 }
 
-void InputDev::reportInput(InputReport const &rep) {
+void input::Device::reportInput( input::Report const &rep) {
 	for(auto &l : listeners)
 		l->inputReport(rep);
 }
 
-void InputDev::deviceRemove() {
+void input::Device::deviceRemove() {
 	for(auto &l : listeners)
 		l->remove(this);
 }
