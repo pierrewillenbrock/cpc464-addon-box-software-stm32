@@ -4,6 +4,7 @@
 #include <ui/ui.hpp>
 #include <fpga/fpga_uploader.hpp>
 #include "controls.hpp"
+#include "frame.hpp"
 #include "input.hpp"
 #include <ui/icons.hpp>
 
@@ -18,7 +19,7 @@ namespace ui {
       Input input;
       InfoLine() {}
     };
-    std::array<InfoLine,9> infolines;
+    std::array<InfoLine,14> infolines;
     Button m_closeButton;
     sigc::signal<void> m_onClose;
     void closeClicked();

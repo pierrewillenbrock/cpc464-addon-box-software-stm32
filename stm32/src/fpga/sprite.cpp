@@ -34,13 +34,22 @@ void sprite_upload_palette() {
 	sprite_palette_uploader.triggerUpload();
 }
 
+enum class BlockType : uint8_t {
+	Invalid = 0,
+	Unused = 1,
+	Used = 2
+};
+
 struct BlockInfo {
 	uint16_t size;
 	uint8_t next;
-	uint8_t type;//0: does not exist, other data invalid. 1: unused. 2: used.
+	BlockType type; //0: does not exist, other data invalid. 1: unused. 2: used.
 };
 
-static std::array<BlockInfo,64> blocks = { {(BlockInfo){ 0x780, 0xff, 1 }, (BlockInfo){ 0, 0, 0 }} };
+static std::array<BlockInfo,64> blocks = {{
+		(BlockInfo) {0x780, 0xff, BlockType::Unused},
+		(BlockInfo) {0, 0, BlockType::Invalid}
+	}};
 
 //if addr == ~0U, looks for space anywhere in the vmem
 //return ~0U if it could not find room.
@@ -51,25 +60,25 @@ unsigned sprite_alloc_vmem(size_t size, unsigned align, unsigned addr) {
 	uint16_t ca = 0;
 	if (addr != ~0U) {
 		//find the block with the starting address
-		while(p < blocks.size() && blocks[p].type != 0) {
+		while(p < blocks.size() && blocks[p].type != BlockType::Invalid) {
 			if (ca <= addr && ca + blocks[p].size > addr)
 				break;
 			ca += blocks[p].size;
 			p = blocks[p].next;
 		}
-		if (p >= blocks.size() || blocks[p].type != 1 ||
+		if (p >= blocks.size() || blocks[p].type != BlockType::Unused ||
 			ca + blocks[p].size < addr + size)
 			goto fail;
 	} else {
 		uint8_t best_block = 0xff;
-		while(p < blocks.size() && blocks[p].type != 0) {
+		while(p < blocks.size() && blocks[p].type != BlockType::Invalid) {
 			uint16_t aa = ca;
 			if (aa & (align-1)) {
 				aa &= ~(align-1);
 				aa += align;
 			}
 			if (blocks[p].size+ca > size+aa &&
-			    blocks[p].type == 1) {
+			    blocks[p].type == BlockType::Unused) {
 				if (best_block >= blocks.size() ||
 				    blocks[best_block].size > blocks[p].size) {
 					best_block = p;
@@ -92,57 +101,57 @@ unsigned sprite_alloc_vmem(size_t size, unsigned align, unsigned addr) {
 	//is it right size already?
 	if (ca == addr && blocks[p].size == size) {
 		//just mark it and be done.
-		blocks[p].type = 2;
+		blocks[p].type = BlockType::Used;
 	} else if (ca == addr) {
 		//aligns to the begin. need only one block entry
 		unsigned int i;
 		for(i = 0; i < blocks.size(); i++) {
-			if (blocks[i].type == 0)
+			if (blocks[i].type == BlockType::Invalid)
 				break;
 		}
 		if (i >= blocks.size())
 			goto fail;
 		blocks[i].next = blocks[p].next;
 		blocks[i].size = blocks[p].size-size;
-		blocks[i].type = 1;
-		blocks[p].type = 2;
+		blocks[i].type = BlockType::Unused;
+		blocks[p].type = BlockType::Used;
 		blocks[p].size = size;
 		blocks[p].next = i;
 	} else if (ca+blocks[p].size == addr+size) {
 		//aligns to the end. need only one block entry
 		unsigned int i;
 		for(i = 0; i < blocks.size(); i++) {
-			if (blocks[i].type == 0)
+			if (blocks[i].type == BlockType::Invalid)
 				break;
 		}
 		if (i >= blocks.size())
 			goto fail;
 		blocks[i].next = blocks[p].next;
 		blocks[i].size = size;
-		blocks[i].type = 2;
-		blocks[p].type = 1;
+		blocks[i].type = BlockType::Used;
+		blocks[p].type = BlockType::Unused;
 		blocks[p].size = blocks[p].size-size;
 		blocks[p].next = i;
 	} else {
 		//need two block entries.
 		unsigned int i,j;
 		for(i = 0; i < blocks.size(); i++) {
-			if (blocks[i].type == 0)
+			if (blocks[i].type == BlockType::Invalid)
 				break;
 		}
 		for(j = i+1; j < blocks.size(); j++) {
-			if (blocks[j].type == 0)
+			if (blocks[j].type == BlockType::Invalid)
 				break;
 		}
 		if (j >= blocks.size())
 			goto fail;
-		blocks[j].type = 1;
+		blocks[j].type = BlockType::Unused;
 		blocks[j].size = blocks[p].size - size - addr + ca;
 		blocks[j].next = blocks[p].next;
-		blocks[i].type = 2;
+		blocks[i].type = BlockType::Used;
 		blocks[i].size = size;
 		blocks[i].next = j;
-		blocks[p].type = 1;
+		blocks[p].type = BlockType::Unused;
 		blocks[p].size = addr - ca;
 		blocks[p].next = i;
 	}
@@ -161,34 +170,54 @@ void sprite_free_vmem(unsigned addr) {
 	uint8_t pp = 0xff;
 	uint16_t ca = 0;
 	//find the block with the starting address
-	while(p < blocks.size() && blocks[p].type != 0) {
+	while(p < blocks.size() && blocks[p].type != BlockType::Invalid) {
 		if (ca == addr)
 			break;
 		ca += blocks[p].size;
 		pp = p;
 		p = blocks[p].next;
 	}
-	if (p >= blocks.size() || blocks[p].type == 0)
+	if (p >= blocks.size() || blocks[p].type == BlockType::Invalid)
 		goto out;
-	if (p != 0 && blocks[pp].type == 1) {
+	if (p != 0 && blocks[pp].type == BlockType::Unused) {
 		//merge into previous block
 		blocks[pp].size += blocks[p].size;
-		blocks[p].type = 0;
+		blocks[p].type = BlockType::Invalid;
 		blocks[pp].next = blocks[p].next;
 		p = pp;
 	}
 	{
 		uint8_t n = blocks[p].next;
-		if (n < blocks.size() && blocks[n].type == 1) {
+		if (n < blocks.size() && blocks[n].type == BlockType::Unused) {
 			//merge next block
 			blocks[p].size += blocks[n].size;
 			blocks[p].next = blocks[n].next;
-			blocks[p].type = 1;
-			blocks[n].type = 0;
+			blocks[p].type = BlockType::Unused;
+			blocks[n].type = BlockType::Invalid;
 		}
 	}
 out:
 	ISR_Enable(isrlevel);
+}
+
+struct SpriteVMemInfo spritevmeminfo() {
+	SpriteVMemInfo info;
+	info.total = 0x780;
+	info.largestFreeBlock = 0;
+	info.free = 0;
+	info.used = 0;
+
+	for(auto const &block : blocks) {
+		if(block.type == BlockType::Unused) {
+			info.free += block.size;
+			if (block.size > info.largestFreeBlock)
+				info.largestFreeBlock = block.size;
+		}
+		if(block.type ==  BlockType::Used)
+			info.used += block.size;
+	}
+
+	return info;
 }
 
 static const sprite_info sprite_default = {

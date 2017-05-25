@@ -15,6 +15,13 @@ struct sprite_info {
 	uint8_t reserved:7;
 } __attribute__((packed));
 
+struct SpriteVMemInfo {
+	uint16_t total;
+	uint16_t used;
+	uint16_t free;
+	uint16_t largestFreeBlock;
+};
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -26,6 +33,8 @@ void sprite_upload_palette();
 //return ~0U if it could not find room.
 unsigned sprite_alloc_vmem(size_t size, unsigned align, unsigned addr);
 void sprite_free_vmem(unsigned addr);
+
+struct SpriteVMemInfo spritevmeminfo();
 
 #ifdef __cplusplus
 }

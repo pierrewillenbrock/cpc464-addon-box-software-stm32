@@ -1,6 +1,8 @@
 
 #include "meminfo.hpp"
 #include <sys/mprot.h>
+#include <sys/info.h>
+#include <fpga/sprite.h>
 #include <malloc.h>
 
 using namespace ui;
@@ -49,21 +51,26 @@ MemInfo::MemInfo()
 
   m_closeButton.onClick().connect(sigc::mem_fun(this, &MemInfo::closeClicked));
 
-  infolines[0].label.setText("Mem: Space allocated from system");
-  infolines[1].label.setText("Mem: Number of non-inuse chunks");
-  infolines[2].label.setText("Mem: Total allocated space");
-  infolines[3].label.setText("Mem: Total non-inuse space");
-  infolines[4].label.setText("Mem: Releasable space");
-  infolines[5].label.setText("MProt: Buckets used");
-  infolines[6].label.setText("MProt: Buckets used by owner");
-  infolines[7].label.setText("MProt: Maximum list depth");
-  infolines[8].label.setText("MProt: Average list depth");
+  infolines[0].label.setText("Sys: Total heap space available");
+  infolines[1].label.setText("Sys: Unclaimed heap space");
+  infolines[2].label.setText("Mem: Space allocated from system");
+  infolines[3].label.setText("Mem: Number of non-inuse chunks");
+  infolines[4].label.setText("Mem: Total allocated space");
+  infolines[5].label.setText("Mem: Total non-inuse space");
+  infolines[6].label.setText("Mem: Releasable space");
+  infolines[7].label.setText("MProt: Buckets used");
+  infolines[8].label.setText("MProt: Buckets used by owner");
+  infolines[9].label.setText("MProt: Maximum list depth");
+  infolines[10].label.setText("MProt: Average list depth");
+  infolines[11].label.setText("Gfx: Memory available");
+  infolines[12].label.setText("Gfx: Memory used");
+  infolines[13].label.setText("Gfx: Largest block available");
 
   unsigned w = 40;
   unsigned h = infolines.size()+1;
   setSize(w,h);  
   setPosition(Point(screen.rect().x + (screen.rect().width - w*8)/2,
-		    screen.rect().y + (screen.rect().height - h*8)/2));
+        screen.rect().y + (screen.rect().height - h*8)/2));
 
   for(unsigned int i = 0; i < infolines.size(); i++) {
     infolines[i].label.setPosition(0,i);
@@ -91,19 +98,25 @@ void MemInfo::setVisible(bool visible) {
     setSize(w,h);  
     setPosition(Point(screen.rect().x + (screen.rect().width - w*8)/2,
 		      screen.rect().y + (screen.rect().height - h*8)/2));
-    
+
     struct mallinfo mainfo = mallinfo();
     struct MProtInfo mpinfo = mprot_info();
-    infolines[0].input.setValue(mainfo.arena);
-    infolines[1].input.setValue(mainfo.ordblks);
-    infolines[2].input.setValue(mainfo.uordblks);
-    infolines[3].input.setValue(mainfo.fordblks);
-    infolines[4].input.setValue(mainfo.keepcost);
-    infolines[5].input.setValue(mpinfo.buckets_used);
-    infolines[6].input.setValue(mpinfo.buckets_used_by_owner);
-    infolines[7].input.setValue(mpinfo.max_list_depth);
-    infolines[8].input.setValue(mpinfo.average_list_depth);
-  } else {
+    struct SysMemInfo sysinfo = sysmeminfo();
+    struct SpriteVMemInfo spriteinfo = spritevmeminfo();
+    infolines[0].input.setValue(sysinfo.total);
+    infolines[1].input.setValue(sysinfo.free);
+    infolines[2].input.setValue(mainfo.arena);
+    infolines[3].input.setValue(mainfo.ordblks);
+    infolines[4].input.setValue(mainfo.uordblks);
+    infolines[5].input.setValue(mainfo.fordblks);
+    infolines[6].input.setValue(mainfo.keepcost);
+    infolines[7].input.setValue(mpinfo.buckets_used);
+    infolines[8].input.setValue(mpinfo.buckets_used_by_owner);
+    infolines[9].input.setValue(mpinfo.max_list_depth);
+    infolines[10].input.setValue(mpinfo.average_list_depth);
+    infolines[11].input.setValue(spriteinfo.total);
+    infolines[12].input.setValue(spriteinfo.used);
+    infolines[13].input.setValue(spriteinfo.largestFreeBlock);
   }
 }
 

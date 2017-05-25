@@ -3,6 +3,7 @@
 #include <reent.h>
 #include <errno.h>
 #include "irq.h"
+#include <sys/info.h>
 
 /* "malloc clue function" */
 
@@ -47,6 +48,14 @@ void * _sbrk_r(
         heap_ptr += nbytes;     /*  Increase heap.                              */
 
         return base;            /*  Return pointer to start of new heap area.   */
+}
+
+struct SysMemInfo sysmeminfo() {
+	struct SysMemInfo info;
+	info.total = _eheap - _bheap;
+	info.alloc = heap_ptr - _bheap;
+	info.free = _eheap - heap_ptr;
+	return info;
 }
 
 int _isatty_r(struct _reent *ptr, int file)
