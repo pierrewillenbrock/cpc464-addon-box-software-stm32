@@ -19,12 +19,22 @@ Control *Container::getChildAt(Point p) {
 }
 
 SubControl::SubControl(Container *parent)
-  : m_parent(parent)
+  : m_x(0)
+  , m_y(0)
+  , m_width(0)
+  , m_height(0)
+  , m_visible(false)
+  , m_parent(parent)
 {
 }
 
 SubControl::SubControl()
-  : m_parent(nullptr)
+  : m_x(0)
+  , m_y(0)
+  , m_width(0)
+  , m_height(0)
+  , m_visible(false)
+  , m_parent(nullptr)
 {
 }
 

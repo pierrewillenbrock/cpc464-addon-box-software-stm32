@@ -320,6 +320,19 @@ static void graphicsCheckTimer(void */*unused*/) {
 
 static std::deque<sigc::slot<void> > deferred_work;
 
+void doDeferredWork() {
+	uint32_t irq_level;
+	ISR_Disable(irq_level);
+	while(!deferred_work.empty()) {
+		sigc::slot<void> work = deferred_work.front();
+		deferred_work.pop_front();
+		ISR_Enable(irq_level);
+		work();
+		ISR_Disable(irq_level);
+	}
+	ISR_Enable(irq_level);
+}
+
 int main()
 {
 	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);
@@ -339,18 +352,6 @@ int main()
 
 	FPGAComm_Setup();
 	Sprite_Setup();
-
-	Mouse_Setup();
-
-	IconBar_Setup();
-
-	FAT_Setup();
-	SDcard_Setup();
-
-	ui::Notification_Setup();
-	USBDeviceNotify_Setup(); // must be first usb driver
-	USBHID_Setup();
-	usb::Setup();
 
 	while(1) {
 		char name[6] = {0xff, 0}; //name and revision
@@ -389,46 +390,46 @@ int main()
 	  sprite_upload_palette();
 	}
 
+	Timer_Repeating(500000, graphicsCheckTimer, NULL);
+
+	Mouse_Setup();
+
+	IconBar_Setup();
+
+	FAT_Setup();
+	SDcard_Setup();
+
+	ui::Notification_Setup();
+	USBDeviceNotify_Setup(); // must be first usb driver
+	USBHID_Setup();
+	usb::Setup();
+
 	enum {
 		Initial,
 		RomLoaded
 	} state = Initial;
 
-	uint32_t logo_map[] = {
-		font_get_tile('C', 15, 0),
-		font_get_tile('P', 15, 0),
-		font_get_tile('C', 15, 0),
-		font_get_tile(' ', 15, 0),
-		font_get_tile('A', 15, 0),
-		font_get_tile('d', 15, 0),
-		font_get_tile('d', 15, 0),
-		font_get_tile('o', 15, 0),
-		font_get_tile('n', 15, 0),
-		font_get_tile('-', 15, 0),
-		font_get_tile('B', 15, 0),
-		font_get_tile('o', 15, 0),
-		font_get_tile('x', 15, 0),
-	};
-	uint16_t logo_map_base = sprite_alloc_vmem(13,1,~0U);
-	FPGAComm_CopyToFPGA(FPGA_GRPH_SPRITES_RAM +
-			    logo_map_base*4, logo_map, sizeof(logo_map));
-	Sprite logo_sprite;
-	sprite_info logo_sprite_info = {
-		.hpos = (uint16_t)(ui::screen.rect().x+50),
-		.vpos = (uint16_t)(ui::screen.rect().y+30),
-		.map_addr = logo_map_base,
-		.hsize = 13,
-		.vsize = 1,
-		.hpitch = 13,
-		.doublesize = 1,
-		.reserved = 0,
-	};
-	logo_sprite.setSpriteInfo(logo_sprite_info);
+	MappedSprite logo_sprite;
 	logo_sprite.setPriority(0);
 	logo_sprite.setZOrder(0);
+	logo_sprite.setSize(13,1);
+	logo_sprite.setPosition(ui::screen.rect().x+50, ui::screen.rect().y+30);
+	logo_sprite.setDoubleSize(true);
+	logo_sprite.at(0,0) = font_get_tile('C', 15, 0);
+	logo_sprite.at(1,0) = font_get_tile('P', 15, 0);
+	logo_sprite.at(2,0) = font_get_tile('C', 15, 0);
+	logo_sprite.at(3,0) = font_get_tile(' ', 15, 0);
+	logo_sprite.at(4,0) = font_get_tile('A', 15, 0);
+	logo_sprite.at(5,0) = font_get_tile('d', 15, 0);
+	logo_sprite.at(6,0) = font_get_tile('d', 15, 0);
+	logo_sprite.at(7,0) = font_get_tile('o', 15, 0);
+	logo_sprite.at(8,0) = font_get_tile('n', 15, 0);
+	logo_sprite.at(9,0) = font_get_tile('-', 15, 0);
+	logo_sprite.at(10,0) = font_get_tile('B', 15, 0);
+	logo_sprite.at(11,0) = font_get_tile('o', 15, 0);
+	logo_sprite.at(12,0) = font_get_tile('x', 15, 0);
+	logo_sprite.updateDone();
 	logo_sprite.setVisible(true);
-
-	Timer_Repeating(500000, graphicsCheckTimer, NULL);
 
 	captureCPCLog(); //do it once so the function is not optimized out
 	while(1) {
@@ -464,16 +465,7 @@ int main()
 			__WFI();
 			break;
 		}
-		uint32_t irq_level;
-		ISR_Disable(irq_level);
-		while(!deferred_work.empty()) {
-			sigc::slot<void> work = deferred_work.front();
-			deferred_work.pop_front();
-			ISR_Enable(irq_level);
-			work();
-			ISR_Disable(irq_level);
-		}
-		ISR_Enable(irq_level);
+		doDeferredWork();
 	}
 
 	return 0;

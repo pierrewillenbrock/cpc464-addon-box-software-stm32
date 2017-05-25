@@ -1,11 +1,8 @@
 
 #include <ui/notify.hpp>
 #include <ui/ui.hpp>
-#include <fpga/fpga_uploader.hpp>
 #include <fpga/sprite.hpp>
 #include <fpga/font.h>
-#include <fpga/layout.h>
-#include <vector>
 #include <deque>
 #include <deferredwork.hpp>
 #include <timer.h>
@@ -18,53 +15,17 @@ struct Notification {
 	std::string message;
 };
 
-static sprite_info notify_spriteinfo;
-static std::vector<uint32_t> notify_map;
-static Sprite notify_sprite;
-static FPGA_Uploader notify_map_uploader;
+static MappedSprite notify_sprite;
 static std::deque<Notification> notify_list;
 static bool notify_updateQueued = false;
 
 void ui::Notification_Setup() {
-	notify_spriteinfo.hpos = 65520;
-	notify_spriteinfo.vpos = 65520;
-	notify_spriteinfo.map_addr = 65535;
-	notify_spriteinfo.hsize = 0;
-	notify_spriteinfo.vsize = 1;
-	notify_spriteinfo.hpitch = 0;
-	notify_spriteinfo.doublesize = 0;
 	notify_sprite.setPriority(5);
 	notify_sprite.setZOrder(40);
-}
-
-static void Notify_updatedMap() {
-	unsigned addr = notify_spriteinfo.map_addr;
-	if (addr != 65535) {
-		notify_map_uploader.setSrc(notify_map.data());
-		notify_map_uploader.setDest(FPGA_GRPH_SPRITES_RAM + addr*4);
-		notify_map_uploader.setSize(notify_map.size()*4);
-		notify_map_uploader.triggerUpload();
-	}
-}
-
-static void Notify_Redraw() {
-	for(auto &tile : notify_map)
-		tile = font_get_tile(' ',15, 1);
-	for(unsigned int i = 0; i < notify_list.size(); i++) {
-		if (notify_list[i].icon)
-			notify_map[notify_spriteinfo.hpitch*i+0] = notify_list[i].icon->def_map;
-		for(unsigned j = 0; j < notify_list[i].message.size(); j++) {
-			notify_map[notify_spriteinfo.hpitch*i+j+1] =
-				font_get_tile(notify_list[i].message[j],15,1);
-		}
-	}
+	notify_sprite.setDoubleSize(false);
 }
 
 static void Notify_Resize() {
-	if (notify_spriteinfo.map_addr != 65535) {
-		sprite_free_vmem(notify_spriteinfo.map_addr);
-		notify_spriteinfo.map_addr = 65535;
-	}
 	if (notify_list.empty())  {
 		notify_sprite.setVisible(false);
 		return;
@@ -76,23 +37,27 @@ static void Notify_Resize() {
 			width = n.message.size();
 	}
 	//Allocate storage for the map
-	notify_spriteinfo.hpitch = width+1;
-	notify_spriteinfo.vsize = notify_list.size();
-	notify_spriteinfo.hsize = width+1;
-	notify_spriteinfo.hpos = ui::screen.rect().x + ui::screen.rect().width-notify_spriteinfo.hsize*8;
-	notify_spriteinfo.vpos = ui::screen.rect().y + ui::screen.rect().height-notify_spriteinfo.vsize*8-24;
-	unsigned addr = sprite_alloc_vmem(notify_spriteinfo.hpitch*notify_spriteinfo.vsize,
-					  1, ~0U);
-	if (addr != ~0U) {
-		notify_spriteinfo.map_addr = addr;
-		notify_map.resize(notify_spriteinfo.hpitch*notify_spriteinfo.vsize);
-		Notify_Redraw();
-		Notify_updatedMap();
-		notify_sprite.setSpriteInfo(notify_spriteinfo);
-		notify_sprite.setVisible(true);
-	} else {
-		notify_map.clear();
+	unsigned w = width+1;
+	unsigned h = notify_list.size();
+	notify_sprite.setPosition(ui::screen.rect().x + ui::screen.rect().width-w*8,
+		ui::screen.rect().y + ui::screen.rect().height-h*8-24);
+	notify_sprite.setSize(w,h);
+
+	uint32_t empty_tile = font_get_tile(' ',15, 1);
+	for(unsigned y = 0; y < h; y++)
+		for(unsigned x = 0; x < w; x++)
+			notify_sprite.at(x,y) = empty_tile;
+	for(unsigned int i = 0; i < notify_list.size(); i++) {
+		if (notify_list[i].icon)
+			notify_sprite.at(0,i) = notify_list[i].icon->def_map;
+		for(unsigned j = 0; j < notify_list[i].message.size(); j++) {
+			notify_sprite.at(j+1,i) =
+				font_get_tile(notify_list[i].message[j],15,1);
+		}
 	}
+
+	notify_sprite.updateDone();
+	notify_sprite.setVisible(true);
 }
 
 static void Notify_UpdateNotifications() {

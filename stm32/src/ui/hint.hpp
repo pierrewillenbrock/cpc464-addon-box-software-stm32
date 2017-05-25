@@ -3,6 +3,7 @@
 
 #include <ui/ui.hpp>
 #include <fpga/sprite.hpp>
+#include <fpga/fpga_uploader.hpp>
 
 #include <string>
 #include <vector>
@@ -12,10 +13,7 @@ namespace ui {
   private:
     std::string m_text;
     bool m_visible;
-    sprite_info m_spriteinfo;
-    std::vector<uint32_t> map;
-    Sprite m_sprite;
-    FPGA_Uploader map_uploader;
+    MappedSprite m_sprite;
   public:
     Hint();
     ~Hint();
@@ -24,3 +22,5 @@ namespace ui {
     void setVisible(bool visible);
   };
 }
+
+// kate: indent-width 2; indent-mode cstyle; replace-tabs on;

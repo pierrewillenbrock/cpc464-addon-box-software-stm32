@@ -66,6 +66,11 @@ namespace ui {
     virtual void keyLeave() {}
     virtual Control *getNextControl(Direction /*dir*/, Point /*reference*/) { return NULL; }
   };
+  class MappedControl : public Control {
+  protected:
+    virtual uint32_t const &map(unsigned x, unsigned y) const = 0;
+    virtual uint32_t &map(unsigned x, unsigned y) = 0;
+  };
   class Screen {
   public:
     struct Options {

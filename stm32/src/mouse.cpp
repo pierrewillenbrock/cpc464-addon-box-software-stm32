@@ -4,6 +4,7 @@
 #include <input/input.hpp>
 #include <fpga/sprite.hpp>
 #include <fpga/layout.h>
+#include <fpga/fpga_comm.h>
 #include <ui/ui.hpp>
 #include <bits.h>
 

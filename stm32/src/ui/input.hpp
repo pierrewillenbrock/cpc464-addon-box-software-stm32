@@ -38,7 +38,7 @@ namespace ui {
     virtual void setVisible(bool visible);
     std::string const &text() const { return m_text; }
     int value() const { return m_value; }
-    virtual void redraw();
+    virtual void redraw(bool no_parent_update = false);
     virtual void mouseDown(uint8_t button, MouseState mousestate);
     virtual void mouseUp(uint8_t button, MouseState mousestate);
     virtual void mouseMove(int16_t /*dx*/, int16_t /*dy*/, MouseState mousestate);

@@ -88,38 +88,36 @@ void ScrollBar::setVertical(bool vertical) {
   redraw();
 }
 
-void ScrollBar::redraw() {
+void ScrollBar::redraw(bool no_parent_update) {
   if (!m_visible)
     return;
   assert(m_parent);
-  uint32_t *map = m_parent->map();
-  unsigned mappitch = m_parent->mapPitch();
-  map += m_x + mappitch * m_y;
 
   if (m_vertical) {
-    map[0] = font_get_tile('^', (m_pressed==Back)?11:15, 1);
+    map(0, 0) = font_get_tile('^', (m_pressed==Back)?11:15, 1);
     for(unsigned i = 0; (int)i < (int)m_height-2; i++) {
       if (i < m_nobStart)
-	map[mappitch*(i+1)] = font_get_tile(' ', (m_pressed==PgBack)?11:15, 1);
+	map(0, i+1) = font_get_tile(' ', (m_pressed==PgBack)?11:15, 1);
       else if (i >= m_nobStart && i < m_nobStart+m_nobSize)
-	map[mappitch*(i+1)] = font_get_tile('#', (m_pressed==Nob)?15:11, 1);
+	map(0, i+1) = font_get_tile('#', (m_pressed==Nob)?15:11, 1);
       else
-	map[mappitch*(i+1)] = font_get_tile(' ', (m_pressed==PgFwd)?11:15, 1);
+	map(0, i+1) = font_get_tile(' ', (m_pressed==PgFwd)?11:15, 1);
     }
-    map[mappitch*(m_height-1)] = font_get_tile('v', (m_pressed==Fwd)?11:15, 1);
+    map(0, m_height-1) = font_get_tile('v', (m_pressed==Fwd)?11:15, 1);
   } else {
-    map[0] = font_get_tile('<', (m_pressed==Back)?11:15, 1);
+    map(0, 0) = font_get_tile('<', (m_pressed==Back)?11:15, 1);
     for(unsigned i = 0; (int)i < (int)m_width-2; i++) {
       if (i < m_nobStart)
-	map[i+1] = font_get_tile(' ', (m_pressed==PgBack)?11:15, 1);
+	map(i+1, 0) = font_get_tile(' ', (m_pressed==PgBack)?11:15, 1);
       else if (i >= m_nobStart && i < m_nobStart+m_nobSize)
-	map[i+1] = font_get_tile('#', (m_pressed==Nob)?15:11, 1);
+	map(i+1, 0) = font_get_tile('#', (m_pressed==Nob)?15:11, 1);
       else
-	map[i+1] = font_get_tile(' ', (m_pressed==PgFwd)?11:15, 1);
+	map(i+1, 0) = font_get_tile(' ', (m_pressed==PgFwd)?11:15, 1);
     }
-    map[m_width-1] = font_get_tile('>', (m_pressed==Fwd)?11:15, 1);
+    map(m_width-1, 0) = font_get_tile('>', (m_pressed==Fwd)?11:15, 1);
   }
-  m_parent->updatedMap();
+  if(!no_parent_update)
+    m_parent->updatedMap();
 }
 
 void ScrollBar::mouseDown(uint8_t button, MouseState mousestate) {
@@ -279,3 +277,4 @@ void ScrollBar::mouseMove(int16_t /*dx*/, int16_t /*dy*/, MouseState mousestate)
   redraw();
 }
 
+// kate: indent-width 2; indent-mode cstyle;

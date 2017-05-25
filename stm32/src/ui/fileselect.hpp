@@ -4,6 +4,7 @@
 #include <ui/ui.hpp>
 #include <fpga/sprite.hpp>
 #include "controls.hpp"
+#include "frame.hpp"
 #include "listbox.hpp"
 #include "input.hpp"
 #include <ui/icons.hpp>

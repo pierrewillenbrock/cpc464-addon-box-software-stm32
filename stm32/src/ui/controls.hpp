@@ -3,6 +3,7 @@
 
 #include <ui/ui.hpp>
 #include <fpga/sprite.hpp>
+#include <fpga/fpga_uploader.hpp>
 #include <ui/icons.hpp>
 
 #include <string>
@@ -13,12 +14,11 @@
 namespace ui {
   class SubControl;
 
-  class Container : public virtual Control {
+  class Container : public virtual MappedControl {
   protected:
     std::list<SubControl*> m_children;
+    friend class SubControl;
   public:
-    virtual uint32_t *map() = 0;
-    virtual unsigned mapPitch() = 0;
     virtual void fullRedraw() = 0;
     virtual void updatedMap() = 0;
     virtual bool isMapped() = 0;
@@ -39,37 +39,7 @@ namespace ui {
     }
   };
 
-  class Frame : public Container {
-  private:
-    bool m_visible;
-    Point m_position;
-    uint8_t m_width;
-    uint8_t m_height;
-    sprite_info m_spriteinfo;
-    std::vector<uint32_t> m_map;
-    Sprite m_sprite;
-    FPGA_Uploader map_uploader;
-  public:
-    Frame();
-    ~Frame();
-    virtual uint32_t *map() { return m_map.size() == 0?NULL:m_map.data(); }
-    virtual unsigned mapPitch() { return m_spriteinfo.hpitch; }
-    uint8_t width() { return m_width; }
-    uint8_t height() { return m_height; }
-    virtual void fullRedraw();
-    virtual void updatedMap();
-    //in pixels
-    void setPosition(Point p);
-    //in tiles
-    void setSize(unsigned width, unsigned height);
-    virtual void setVisible(bool visible);
-    bool visible() { return m_visible; }
-    virtual Rect getRect();
-    virtual Rect getGlobalRect();
-    virtual bool isMapped() { return m_visible; }
-  };
-
-  class SubControl : public virtual Control {
+  class SubControl : public virtual MappedControl {
   protected:
     uint8_t m_x;
     uint8_t m_y;
@@ -77,6 +47,14 @@ namespace ui {
     uint8_t m_height;
     bool m_visible;
     Container *m_parent;
+    virtual uint32_t const &map(unsigned x, unsigned y) const {
+      assert(m_parent);
+      return m_parent->map(x + m_x, y + m_y);
+    }
+    virtual uint32_t &map(unsigned x, unsigned y) {
+      assert(m_parent);
+      return m_parent->map(x + m_x, y + m_y);
+    }
   public:
     SubControl(Container *parent);
     SubControl();
@@ -84,7 +62,7 @@ namespace ui {
     void setSize(unsigned width, unsigned height);
     virtual void setVisible(bool visible);
     bool visible() { return m_visible; }
-    virtual void redraw() = 0;
+    virtual void redraw(bool no_parent_update = false) = 0;
     virtual Rect getRect();
     virtual Rect getGlobalRect();
     virtual void unmapped() {}
@@ -98,11 +76,9 @@ namespace ui {
     Panel();
     ~Panel();
     //in tile position, relative to the parent
-    virtual uint32_t *map();
-    virtual unsigned mapPitch();
     virtual void fullRedraw();
     virtual void updatedMap();
-    virtual void redraw();
+    virtual void redraw(bool no_parent_update = false);
     virtual void unmapped();
     virtual void mapped();
     virtual void setVisible(bool visible);
@@ -121,7 +97,7 @@ namespace ui {
     ~Button();
     void setText(std::string const &text);
     void setIcon(RefPtr<Icon const> const &icon);
-    virtual void redraw();
+    virtual void redraw(bool no_parent_update = false);
     virtual void mouseDown(uint8_t button, MouseState mousestate);
     virtual void mouseUp(uint8_t button, MouseState mousestate);
     sigc::signal<void> &onClick() { return m_onClick; }
@@ -135,7 +111,9 @@ namespace ui {
     Label();
     ~Label();
     void setText(std::string const &text);
-    virtual void redraw();
+    virtual void redraw(bool no_parent_update = false);
   };
 
 }
+
+// kate: indent-width 2; indent-mode cstyle; replace-tabs on;

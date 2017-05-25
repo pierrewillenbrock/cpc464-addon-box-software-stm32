@@ -7,48 +7,34 @@
 using namespace ui;
 
 Menu::Menu() {
-  m_spriteinfo.hpos = 65520;
-  m_spriteinfo.vpos = 65520;
-  m_spriteinfo.map_addr = 65535;
-  m_spriteinfo.hsize = 0;
-  m_spriteinfo.vsize = 1;
-  m_spriteinfo.hpitch = 0;
-  m_spriteinfo.doublesize = 0;
   m_sprite.setPriority(30);
   m_sprite.setZOrder(40);
+  m_sprite.setDoubleSize(false);
   mouse_over_item = -1;
 }
 
 Menu::~Menu() {
-  if (m_spriteinfo.map_addr != 65535)
-    sprite_free_vmem(m_spriteinfo.map_addr);
 }
 
 //just the corner position. gets adjusted to fit on screen
 void Menu::setPosition(Point p) {
   m_position = p;
-  m_spriteinfo.hpos = m_position.x;
-  m_spriteinfo.vpos = m_position.y;
-  if (m_spriteinfo.hpos + m_spriteinfo.hsize*8 >
-      screen.rect().x+screen.rect().width)
-    m_spriteinfo.hpos = p.x-m_spriteinfo.hsize*8;
-  if (m_spriteinfo.vpos + m_spriteinfo.vsize*8 >
-      screen.rect().y+screen.rect().height)
-    m_spriteinfo.vpos = p.y-m_spriteinfo.vsize*8;
-  m_sprite.setSpriteInfo(m_spriteinfo);
+  //need to generate the map to know its size and adjust position
+  if (m_visible) {
+    generateMap();
+  }
 }
 
 void Menu::generateMap() {
   unsigned max_len = 0;
-  for(unsigned i = 0; i < getItemCount(); i++) {
+  unsigned h = getItemCount();
+  for(unsigned i = 0; i < h; i++) {
     if (max_len < getItemText(i).size())
       max_len = getItemText(i).size();
   }
-  m_spriteinfo.hsize = max_len;
-  m_spriteinfo.hpitch = m_spriteinfo.hsize;
-  m_spriteinfo.vsize = getItemCount();
-  map.resize(m_spriteinfo.hsize * m_spriteinfo.vsize);
-  for(unsigned i = 0; i < getItemCount(); i++) {
+  unsigned w = max_len;
+  m_sprite.setSize(w,h);
+  for(unsigned i = 0; i < h; i++) {
     unsigned int pal = 15;
     if ((int)i == mouse_over_item) {
       pal = 11;
@@ -56,33 +42,29 @@ void Menu::generateMap() {
     std::string text = getItemText(i);
     unsigned j = 0;
     for(; j < text.size(); j++)
-      map[i*m_spriteinfo.hpitch+j] = font_get_tile(text[j],pal, 1);
-    for(; j < m_spriteinfo.hsize; j++)
-      map[i*m_spriteinfo.hpitch+j] = font_get_tile(' ',pal, 1);
+      map(j, i) = font_get_tile(text[j],pal, 1);
+    for(; j < max_len; j++)
+      map(j, i) = font_get_tile(' ',pal, 1);
   }
-  m_spriteinfo.hpos = m_position.x;
-  m_spriteinfo.vpos = m_position.y;
-  if (m_spriteinfo.hpos + m_spriteinfo.hsize*8 >
+  m_sprite.updateDone();
+  unsigned x = m_position.x;
+  unsigned y = m_position.y;
+  if (x + w*8 >
       screen.rect().x+screen.rect().width)
-    m_spriteinfo.hpos = m_position.x-m_spriteinfo.hsize*8;
-  if (m_spriteinfo.vpos + m_spriteinfo.vsize*8 >
+    x = m_position.x-w*8;
+  if (y + h*8 >
       screen.rect().y+screen.rect().height)
-    m_spriteinfo.vpos = m_position.y-m_spriteinfo.vsize*8;
-  if (m_spriteinfo.map_addr != 65535) {
-    map_uploader.setSrc(map.data());
-    map_uploader.setDest(FPGA_GRPH_SPRITES_RAM + m_spriteinfo.map_addr*4);
-    map_uploader.setSize(map.size()*4);
-    map_uploader.triggerUpload();
-    m_sprite.setSpriteInfo(m_spriteinfo);
-  }
+    y = m_position.y-h*8;
+  m_sprite.setPosition(x,y);
 }
 
 Rect Menu::getRect() {
+  sprite_info const &i = m_sprite.info();
   Rect r;
-  r.x = m_spriteinfo.hpos;
-  r.y = m_spriteinfo.vpos;
-  r.width = m_spriteinfo.hsize*8;
-  r.height = m_spriteinfo.vsize*8;
+  r.x = i.hpos;
+  r.y = i.vpos;
+  r.width = i.hsize*8;
+  r.height = i.vsize*8;
   return r;
 }
 
@@ -148,24 +130,10 @@ void Menu::setVisible(bool visible) {
   if (m_visible == visible)
     return;
   m_visible = visible;
-  if (!visible) {
-    if (m_spriteinfo.map_addr != 65535) {
-      sprite_free_vmem(m_spriteinfo.map_addr);
-      m_spriteinfo.map_addr = 65535;
-    }
-  } else {
-    m_spriteinfo.map_addr = 65535;
+  if (visible) {
     generateMap();
-    unsigned addr = sprite_alloc_vmem(map.size(), 1, ~0U);
-    if (addr != ~0U) {
-      m_spriteinfo.map_addr = addr;
-      map_uploader.setSrc(map.data());
-      map_uploader.setDest(FPGA_GRPH_SPRITES_RAM + m_spriteinfo.map_addr*4);
-      map_uploader.setSize(map.size()*4);
-      map_uploader.triggerUpload();
-      m_sprite.setSpriteInfo(m_spriteinfo);
-    }
   }
   m_sprite.setVisible(m_visible);
 }
 
+// kate: indent-width 2; indent-mode cstyle;

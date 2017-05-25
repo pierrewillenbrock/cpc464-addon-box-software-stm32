@@ -4,6 +4,7 @@
 #include <ui/ui.hpp>
 #include <fpga/fpga_uploader.hpp>
 #include "controls.hpp"
+#include "frame.hpp"
 #include "input.hpp"
 #include <ui/icons.hpp>
 

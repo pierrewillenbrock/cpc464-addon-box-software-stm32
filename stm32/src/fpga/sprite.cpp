@@ -204,6 +204,7 @@ static const sprite_info sprite_default = {
 static std::list<Sprite *> sprite_registered;
 static Sprite * sprite_allocated[4] = {0,0,0,0};
 static FPGA_Uploader sprite_uploader[4];
+static FPGA_Uploader sprite_map_uploader[4];
 
 void Sprite_Setup() {
 	for(unsigned i = 0; i < 4; i++) {
@@ -252,6 +253,7 @@ void Sprite::checkAllocations() {
 	for(int i = 3; i >= 0; i--) {
 		if (bestprio[i])
 			break;
+		// we already know bestprio[i] == NULL, so we skip that using i-1
 		for(int j = i-1; j >= 0; j--) {
 			if (!bestprio[j])
 				continue;
@@ -262,35 +264,50 @@ void Sprite::checkAllocations() {
 			break;
 		}
 	}
+
 	//now fix up all sprites that lost their allocation
-	for(auto const &sp : sprite_registered) {
-		if (sp->m_allocated == -1)
-			break;
+	for(unsigned i = 0; i < 4; i++) {
+		if(!sprite_allocated[i])
+			continue;
 		bool found = false;
-		for(unsigned i = 0; i < 4; i++) {
-			if (bestprio[i] == sp) {
+		for(unsigned j = 0; j < 4; j++) {
+			if (bestprio[j] == sprite_allocated[i]) {
 				found = true;
 				break;
 			}
 		}
-		if (!found)
-			sp->m_allocated = -1;
-	}
-	//and queue info updates for any changes in allocated sprite number
-	for(unsigned i = 0; i < 4; i++) {
-		if (!bestprio[i]) {
-			if (sprite_allocated[i]) {
-				sprite_allocated[i] = NULL;
+		if(!found) {
+			sprite_allocated[i]->m_allocated = -1;
+			sprite_allocated[i]->freeMap(sprite_allocated[i]->m_info);
+			sprite_allocated[i] = NULL;
+			if (!bestprio[i]) {
 				sprite_uploader[i].setSrc(&sprite_default);
 				sprite_uploader[i].triggerUpload();
 			}
-			continue;
 		}
-		if (bestprio[i] != sprite_allocated[i]) {
+	}
+
+	// all remaining entries in sprite_allocated are
+	// * going to stay the same,
+	// * get replaced by some other entry in sprite_allocated or
+	// * get replaced by a new entry
+
+	// update m_allocated in the bestprio sprites and triggerUpload and
+	// allocateMap as needed.
+	for (unsigned i = 0; i < 4; i++) {
+		if(sprite_allocated[i] == bestprio[i] || !bestprio[i])
+			continue; // nothing to do
+
+		if(bestprio[i]->m_allocated ==  -1) {
+			// has not been allocated before
 			bestprio[i]->m_allocated = i;
-			bestprio[i]->triggerUpload();
-			sprite_allocated[i] = bestprio[i];
+			bestprio[i]->allocateMap(bestprio[i]->m_info);
+		} else {
+			// map should still be allocated, but we need to reupload info
+			bestprio[i]->m_allocated = i;
 		}
+		bestprio[i]->triggerUpload();
+		sprite_allocated[i] = bestprio[i];
 	}
 }
 
@@ -309,6 +326,7 @@ void Sprite::unregister(Sprite *sprite) {
 			break;
 		}
 	}
+	sprite->freeMap(sprite->m_info);
 }
 
 Sprite::Sprite()
@@ -394,5 +412,115 @@ bool Sprite::isAllocated() {
 	return m_allocated != -1;
 }
 
+void Sprite::triggerMapUpload(uint32_t *data) {
+	if(m_allocated < 0 || m_allocated >= 4 || m_info.map_addr == 65535)
+		return;
+	sprite_map_uploader[m_allocated].setSrc(data);
+	sprite_map_uploader[m_allocated].setSize(m_info.hpitch*m_info.vsize * 4);
+	sprite_map_uploader[m_allocated].setDest(
+		FPGA_GRPH_SPRITES_RAM + m_info.map_addr*4);
+	sprite_map_uploader[m_allocated].triggerUpload();
+}
 
+bool MappedSprite::allocateMap(sprite_info &i) {
+	if (map_addr != 65535)
+		freeMap(i);
+	unsigned addr = sprite_alloc_vmem(i.hpitch*i.vsize,
+					  1, ~0U);
+	if (addr != ~0U) {
+		map_addr = addr;
+		i.map_addr = addr;
+		triggerMapUpload(storage.data());
+	} else {
+		map_addr = 65535;
+		i.map_addr = 65535;
+	}
+	return map_addr != 65535;
+}
 
+void MappedSprite::freeMap(sprite_info &i) {
+	if (map_addr != 65535)
+		sprite_free_vmem(map_addr);
+	map_addr = 65535;
+	i.map_addr = 65535;
+}
+
+MappedSprite::MappedSprite()
+	: Sprite()
+	, map_addr(65535) {
+	sprite_info i = info();
+	i.hpos = 65520;
+	i.vpos = 65520;
+	i.hsize = 0;
+	i.hpitch = 0;
+	i.vsize = 0;
+	i.map_addr = 65535;
+	setSpriteInfo(i);
+}
+
+MappedSprite::MappedSprite(MappedSprite const &sp)
+	: Sprite()
+	, storage(sp.storage)
+	, map_addr(65535) {
+	*this = sp;
+}
+
+MappedSprite &MappedSprite::operator=(MappedSprite const &sp) {
+	sprite_info iorig = info();
+	freeMap(iorig);
+	setSpriteInfo(iorig);
+	Sprite::operator=(sp);
+	storage = sp.storage;
+	sprite_info inew = info();
+	if (isAllocated()) {
+		allocateMap(inew);
+		setSpriteInfo(inew);
+		updateDone();
+	}
+	return *this;
+}
+
+MappedSprite::~MappedSprite() {
+	sprite_info i = info();
+	freeMap(i);
+}
+
+uint32_t const &MappedSprite::at(unsigned x, unsigned y) const {
+	sprite_info const &i = info();
+	return storage[i.hpitch * y + x];
+}
+
+uint32_t &MappedSprite::at(unsigned x, unsigned y) {
+	sprite_info const &i = info();
+	return storage[i.hpitch * y + x];
+}
+
+void MappedSprite::updateDone() {
+	triggerMapUpload(storage.data());
+}
+
+void MappedSprite::setSize(unsigned x, unsigned y) {
+	sprite_info i = info();
+	i.hpitch = x;
+	i.hsize = x;
+	i.vsize = y;
+	storage.resize(x*y);
+	if (isAllocated()) {
+		freeMap(i);
+		allocateMap(i);
+	}
+	setSpriteInfo(i);
+}
+
+void MappedSprite::setPosition(unsigned x, unsigned y) {
+	sprite_info i = info();
+	i.hpos = x;
+	i.vpos = y;
+	setSpriteInfo(i);
+}
+
+void MappedSprite::setDoubleSize(bool doublesize) {
+	sprite_info i = info();
+	i.doublesize = doublesize ? 1 : 0;
+	setSpriteInfo(i);
+}

@@ -74,13 +74,10 @@ void ListBox::clearItems() {
   redraw();
 }
 
-void ListBox::redraw() {
+void ListBox::redraw(bool no_parent_update) {
   if (!m_visible)
     return;
   assert(m_parent);
-  uint32_t *map = m_parent->map();
-  unsigned mappitch = m_parent->mapPitch();
-  map += m_x + mappitch * m_y;
   unsigned rows = m_scrollbar.visible()?m_height-1:m_height;
   unsigned position = m_scrollbar.visible()?m_scrollbar.position():0;
 
@@ -99,18 +96,18 @@ void ListBox::redraw() {
       unsigned pal = selected?15:11;
       if (x >= 0) {
 	if (it.icon)
-	  map[r * mappitch + x] = selected?it.icon->sel_map:it.icon->def_map;
+	  map(x,r) = selected?it.icon->sel_map:it.icon->def_map;
 	else
-	  map[r * mappitch + x] = font_get_tile(' ',11, 1);
+	  map(x,r) = font_get_tile(' ',11, 1);
       }
       if (x+1 + it.text.size() > 0) {
 	for(int i = 0; i < (int)it.text.size(); i++) {
 	  if (x+i+1 >= 0 && x+i+1 < m_width)
-	    map[r * mappitch + x+i+1] = font_get_tile(it.text[i],pal, 1);
+	    map(x+i+1, r) = font_get_tile(it.text[i],pal, 1);
 	}
 	for(int i = it.text.size()+1; i < (int)w; i++) {
 	  if (x+i >= 0 && x+i < m_width)
-	    map[r * mappitch + x+i] = font_get_tile(' ',11, 1);
+	    map(x+i, r) = font_get_tile(' ',11, 1);
 	}
       }
     }
@@ -118,7 +115,7 @@ void ListBox::redraw() {
       for(unsigned r = m_items.size()-c*rows; r < rows; r++) {
 	for(int i = 0; i < (int)w; i++) {
 	  if (x+i >= 0 && x+i < m_width)
-	    map[r * mappitch + x+i] = font_get_tile(' ',11, 1);
+	    map(x+i, r) = font_get_tile(' ',11, 1);
 	}
       }
     }
@@ -129,12 +126,13 @@ void ListBox::redraw() {
   if (x < m_width) {
     for(unsigned r = 0; r < rows; r++) {
       for(unsigned int i = x; i < m_width; i++) {
-	map[r * mappitch + i] = font_get_tile(' ',11, 1);
+	map(i, r) = font_get_tile(' ',11, 1);
       }
     }
   }
-  Panel::redraw();
-  m_parent->updatedMap();
+  Panel::redraw(no_parent_update);
+  if (!no_parent_update)
+    m_parent->updatedMap();
 }
 
 int ListBox::itemAt(unsigned px, unsigned py) {
@@ -217,3 +215,4 @@ void ListBox::mouseUp(uint8_t button, MouseState mousestate) {
   }
 }
 
+// kate: indent-width 2; indent-mode cstyle;

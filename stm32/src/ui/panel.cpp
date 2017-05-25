@@ -16,14 +16,6 @@ Panel::Panel()
 Panel::~Panel() {
 }
 
-uint32_t *Panel::map() {
-  return m_parent->map()+mapPitch()*m_y+m_x;
-}
-
-unsigned Panel::mapPitch() {
-  return m_parent->mapPitch();
-}
-
 void Panel::fullRedraw() {
   m_parent->fullRedraw();
 }
@@ -32,13 +24,15 @@ void Panel::updatedMap() {
   m_parent->updatedMap();
 }
 
-void Panel::redraw() {
+void Panel::redraw(bool no_parent_update) {
   //we don't do any drawing on our own, being well served by the
   //global background. but our children may.
   if (m_visible) {
     for(auto &ch : m_children)
-      ch->redraw();
+      ch->redraw(true);
   }
+  if (!no_parent_update)
+	  m_parent->updatedMap();
 }
 
 void Panel::unmapped() {

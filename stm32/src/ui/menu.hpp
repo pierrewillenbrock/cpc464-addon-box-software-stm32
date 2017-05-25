@@ -3,23 +3,28 @@
 
 #include <ui/ui.hpp>
 #include <fpga/sprite.hpp>
+#include <fpga/fpga_uploader.hpp>
 
 #include <string>
 #include <vector>
 
 namespace ui {
-  class Menu : public ui::Control {
+  class Menu : public ui::MappedControl {
   private:
     bool m_visible;
     Point m_position;
-    sprite_info m_spriteinfo;
-    std::vector<uint32_t> map;
-    Sprite m_sprite;
-    FPGA_Uploader map_uploader;
+    MappedSprite m_sprite;
     int mouse_over_item;
     int pressed_item;
     //also updates sprites hsize/vsize
     void generateMap();
+  protected:
+    virtual uint32_t const &map(unsigned x, unsigned y) const {
+	    return m_sprite.at(x,y);
+    }
+    virtual uint32_t &map(unsigned x, unsigned y) {
+	    return m_sprite.at(x,y);
+    }
   public:
     Menu();
     ~Menu();

@@ -46,6 +46,10 @@ void Input::setText(std::string const &text) {
 
 void Input::setFlags(unsigned flags) {
   m_flags = flags;
+  if(m_parent->isMapped() && m_visible && (m_flags & Numeric))
+    m_updownicon = icons.getIcon(Icons::UpDown);
+  else
+    m_updownicon = NULL;
   redraw();
 }
 
@@ -64,21 +68,16 @@ void Input::setValueBounds(int min, int max) {
 void Input::setVisible(bool visible) {
   SubControl::setVisible(visible);
   assert(m_parent);
-  if (m_parent->isMapped()) {
-    if (visible)
-      m_updownicon = icons.getIcon(Icons::UpDown);
-    else
-      m_updownicon = NULL;
-  }
+  if(m_parent->isMapped() && visible && (m_flags & Numeric))
+    m_updownicon = icons.getIcon(Icons::UpDown);
+  else
+    m_updownicon = NULL;
 }
 
-void Input::redraw() {
+void Input::redraw(bool no_parent_update) {
   if (!m_visible)
     return;
   assert(m_parent);
-  uint32_t *map = m_parent->map();
-  unsigned mappitch = m_parent->mapPitch();
-  map += m_x + mappitch * m_y;
   unsigned txt_width = (m_flags & Numeric)?m_width-1:m_width;
   //left align
   for(unsigned int i = m_scroll;
@@ -89,28 +88,28 @@ void Input::redraw() {
     else
       c = ' ';
     if (m_focused && m_cursor == i)
-      map[i-m_scroll] = font_get_tile(c, 15, 1);
+      map(i-m_scroll, 0) = font_get_tile(c, 15, 1);
     else
-      map[i-m_scroll] = font_get_tile(c, 11, 1);
+      map(i-m_scroll, 0) = font_get_tile(c, 11, 1);
   }
   for(unsigned int i = m_text.size()+1-m_scroll; i < txt_width; i++)
-    map[i] = font_get_tile(' ', 11, 1);
+    map(i, 0) = font_get_tile(' ', 11, 1);
   if ((m_flags & Numeric) && m_updownicon) {
     if ((m_pressed == Up || m_pressed == Down) && m_mouseOver)
-      map[m_width-1] = m_updownicon->sel_map;
+      map(m_width-1, 0) = m_updownicon->sel_map;
     else
-      map[m_width-1] = m_updownicon->def_map;
+      map(m_width-1, 0) = m_updownicon->def_map;
   }
-  m_parent->updatedMap();
+  if (!no_parent_update)
+	  m_parent->updatedMap();
 }
 
 void Input::unmapped() {
-  if (m_visible)
-    m_updownicon = NULL;
+  m_updownicon = NULL;
 }
 
 void Input::mapped() {
-  if (m_visible)
+  if (m_visible && (m_flags & Numeric))
     m_updownicon = icons.getIcon(Icons::UpDown);
 }
 

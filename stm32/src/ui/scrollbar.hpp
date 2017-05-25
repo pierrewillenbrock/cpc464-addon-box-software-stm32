@@ -30,10 +30,12 @@ namespace ui {
     void setPageSize(unsigned pageSize);
     void setVertical(bool vertical);
     unsigned position() { return m_position; }
-    virtual void redraw();
+    virtual void redraw(bool no_parent_update = false);
     virtual void mouseDown(uint8_t button, MouseState mousestate);
     virtual void mouseUp(uint8_t button, MouseState mousestate);
     void mouseMove(int16_t /*dx*/, int16_t /*dy*/, MouseState mousestate);
     sigc::signal<void,unsigned> &onChanged() { return m_onChanged; }
   };
 }
+
+// kate: indent-width 2; indent-mode cstyle;

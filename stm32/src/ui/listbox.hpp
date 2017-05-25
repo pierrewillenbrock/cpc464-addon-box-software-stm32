@@ -27,7 +27,7 @@ namespace ui {
     ~ListBox();
     void addItem(Item const &it);
     void clearItems();
-    virtual void redraw();
+    virtual void redraw(bool no_parent_update = false);
     virtual void mouseDown(uint8_t button, MouseState mousestate);
     virtual void mouseUp(uint8_t button, MouseState mousestate);
     sigc::signal<void,int> &onSelected() { return m_onSelected; }

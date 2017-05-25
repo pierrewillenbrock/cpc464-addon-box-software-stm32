@@ -577,9 +577,7 @@ static uint32_t const settingsbr[] = { //uses palettes #8
 #undef TILE_LINE
 
 #define MAP(t, p) ((((t) & 0x7f) << 2) | ((p) << 17))
-static uint32_t iconbar_map[36];
 
-static uint16_t iconbar_mapbase;
 static uint8_t iconbar_tile_disktlno;
 static uint8_t iconbar_tile_disktrno;
 static uint8_t iconbar_tile_diskblno;
@@ -600,7 +598,6 @@ static uint8_t iconbar_tile_settingstlno;
 static uint8_t iconbar_tile_settingstr_blno;
 static uint8_t iconbar_tile_settingsbrno;
 
-static FPGA_Uploader iconbar_map_uploader;
 static FPGA_Uploader iconbar_mousetr_uploader;
 static FPGA_Uploader iconbar_lpentr_uploader;
 
@@ -677,47 +674,77 @@ public:
 static IconBar_DiskMenu iconbar_diskmenu;
 static IconBar_SettingsMenu iconbar_settingsmenu;
 
-class IconBar_Control : public ui::Control {
+class IconBar_Control : public ui::MappedControl {
 private:
-  Sprite sprite;
+  MappedSprite m_sprite;
   ui::Hint hint;
   int hintforicon;
   int press_iconno;
 public:
-  IconBar_Control() : hintforicon(-1), press_iconno(-1) {}
+  IconBar_Control() : hintforicon(-1), press_iconno(-1) {
+  }
   void screenRectChange(ui::Rect const &r) {
-    struct sprite_info info = {
-      .hpos = (uint16_t)(r.x + r.width - 18*8),
-      .vpos = (uint16_t)(r.y + r.height - 2*8),
-      .map_addr = iconbar_mapbase,
-      .hsize = 18,
-      .vsize = 2,
-      .hpitch = 18,
-      .doublesize = 0,
-      .reserved = 0,
-    };
-    sprite.setSpriteInfo(info);
+    m_sprite.setPosition(r.x + r.width - 18*8, r.y + r.height - 2*8);
   }
   void init() {
-    struct sprite_info info = {
-      .hpos = (uint16_t)(ui::screen.rect().x + ui::screen.rect().width - 18*8),
-      .vpos = (uint16_t)(ui::screen.rect().y + ui::screen.rect().height - 2*8),
-      .map_addr = iconbar_mapbase,
-      .hsize = 18,
-      .vsize = 2,
-      .hpitch = 18,
-      .doublesize = 0,
-      .reserved = 0,
-    };
-    sprite.setSpriteInfo(info);
-    sprite.setPriority(10);
-    sprite.setZOrder(20);
-    sprite.setVisible(true);
+    m_sprite.setPriority(10);
+    m_sprite.setZOrder(20);
+    m_sprite.setDoubleSize(false);
+    m_sprite.setPosition(ui::screen.rect().x + ui::screen.rect().width - 18*8,
+       ui::screen.rect().y + ui::screen.rect().height - 2*8);
+    m_sprite.setSize(18,2);
+
+    map(0, 0) = MAP(iconbar_tile_joytlno, 8);
+    map(1, 0) = MAP(iconbar_tile_joytrno, 1);
+    map(2, 0) = MAP(iconbar_tile_joytlno, 8);
+    map(3, 0) = MAP(iconbar_tile_joytrno, 1);
+    map(4, 0) = MAP(iconbar_tile_mousetlno, 8);
+    map(5, 0) = MAP(iconbar_tile_mousetrno, 1); //the tile gets updated depending on mouse.assigned
+    map(6, 0) = MAP(iconbar_tile_lpentlno, 10);
+    map(7, 0) = MAP(iconbar_tile_lpentrno, 1); //the tile gets updated depending on mouse.assigned
+    map(8, 0) = MAP(iconbar_tile_disktlno, 10);
+    map(9, 0) = MAP(iconbar_tile_disktrno, 1);
+    map(10, 0) = MAP(iconbar_tile_disktlno, 10);
+    map(11, 0) = MAP(iconbar_tile_disktrno, 1);
+    map(12, 0) = MAP(iconbar_tile_disktlno, 10);
+    map(13, 0) = MAP(iconbar_tile_disktrno, 1);
+    map(14, 0) = MAP(iconbar_tile_disktlno, 10);
+    map(15, 0) = MAP(iconbar_tile_disktrno, 1);
+    map(16, 0) = MAP(iconbar_tile_settingstlno, 8);
+    map(17, 0) = MAP(iconbar_tile_settingstr_blno, 8);
+    map(0, 1) = MAP(iconbar_tile_joyblno, 8);
+    map(1, 1) = MAP(iconbar_tile_joybrno, 8);
+    map(2, 1) = MAP(iconbar_tile_joyblno, 8);
+    map(3, 1) = MAP(iconbar_tile_joybrno, 9);
+    map(4, 1) = MAP(iconbar_tile_mouseblno, 8);
+    map(5, 1) = MAP(iconbar_tile_mousebrno, 8);
+    map(6, 1) = MAP(iconbar_tile_lpenblno, 10);
+    map(7, 1) = MAP(iconbar_tile_lpenbrno, 10);
+    map(8, 1) = MAP(iconbar_tile_diskblno, 0); //state and animation by rewriting palette 0
+    map(9, 1) = MAP(iconbar_tile_diskbrno, 8);
+    map(10, 1) = MAP(iconbar_tile_diskblno, 0); //state and animation by rewriting palette 0
+    map(11, 1) = MAP(iconbar_tile_diskbrno, 9);
+    map(12, 1) = MAP(iconbar_tile_diskblno, 0); //state and animation by rewriting palette 0
+    map(13, 1) = MAP(iconbar_tile_diskbrno, 10);
+    map(14, 1) = MAP(iconbar_tile_diskblno, 0); //state and animation by rewriting palette 0
+    map(15, 1) = MAP(iconbar_tile_diskbrno, 12);
+    map(16, 1) = MAP(iconbar_tile_settingstr_blno, 9);
+    map(17, 1) = MAP(iconbar_tile_settingsbrno, 8);
+
+    m_sprite.updateDone();
+
+    m_sprite.setVisible(true);
     ui::screen.onRectChange().connect
       (sigc::mem_fun(this, &IconBar_Control::screenRectChange));
   }
+  virtual uint32_t const &map(unsigned x, unsigned y) const {
+    return m_sprite.at(x,y);
+  }
+  virtual uint32_t &map(unsigned x, unsigned y) {
+    return m_sprite.at(x,y);
+  }
   virtual ui::Rect getRect() {
-    sprite_info const &info = sprite.info();
+    sprite_info const &info = m_sprite.info();
     ui::Rect r = {
       .x = info.hpos,
       .y = info.vpos,
@@ -729,8 +756,11 @@ public:
   virtual ui::Rect getGlobalRect() {
     return getRect();
   }
+  void updateDone() { m_sprite.updateDone(); }
   virtual void mouseDown(uint8_t button, ui::MouseState mousestate) {
     ui::Rect r = getGlobalRect();
+    hint.setVisible(false);
+    hintforicon = -1;
     if (mousestate.x < r.x ||
 	mousestate.y < r.y ||
 	mousestate.x >= r.x+r.width ||
@@ -741,6 +771,8 @@ public:
   }
   virtual void mouseUp(uint8_t button, ui::MouseState mousestate) {
     ui::Rect r = getGlobalRect();
+    hint.setVisible(false);
+    hintforicon = -1;
     if (mousestate.x < r.x ||
 	mousestate.y < r.y ||
 	mousestate.x >= r.x+r.width ||
@@ -919,13 +951,6 @@ static void iconbar_upload_tile(unsigned no, uint32_t const *data) {
   FPGAComm_CopyToFPGA(FPGA_GRPH_SPRITES_RAM+no*0x10*4, data, 0x10*4);
 }
 
-static void iconbar_queue_map_update() {
-  iconbar_map_uploader.setDest(FPGA_GRPH_SPRITES_RAM + iconbar_mapbase*4);
-  iconbar_map_uploader.setSrc(iconbar_map);
-  iconbar_map_uploader.setSize(sizeof(iconbar_map));
-  iconbar_map_uploader.triggerUpload();
-}
-
 void IconBar_disk_assigned(unsigned no, char const *displayname) {
   if (no >= 4)
     return;
@@ -940,9 +965,9 @@ void IconBar_disk_assigned(unsigned no, char const *displayname) {
       break;
   }
 
-  iconbar_map[9+no*2] = MAP(iconbar_tile_disktrno, 2);
+  iconbar_control.map(9+no*2,0) = MAP(iconbar_tile_disktrno, 2);
 
-  iconbar_queue_map_update();
+  iconbar_control.updateDone();
 }
 
 void IconBar_disk_unassigned(unsigned no) {
@@ -950,17 +975,17 @@ void IconBar_disk_unassigned(unsigned no) {
     return;
   iconbar_disk_assigned[no] = false;
   iconbar_disk_displayname[no] = "not assigned";
-  iconbar_map[9+no*2] = MAP(iconbar_tile_disktrno, 1);
 
-  iconbar_queue_map_update();
+  iconbar_control.map(9+no*2, 0) = MAP(iconbar_tile_disktrno, 1);
+  iconbar_control.updateDone();
 }
 
 void IconBar_disk_activity(unsigned no, bool activity) {
   if (no >= 4)
     return;
-  iconbar_map[8+no*2] = MAP(iconbar_tile_disktlno, activity?12:10);
 
-  iconbar_queue_map_update();
+  iconbar_control.map(8+no*2,0) = MAP(iconbar_tile_disktlno, activity?12:10);
+  iconbar_control.updateDone();
 }
 
 static unsigned iconbar_disk_motor_anim;
@@ -1000,18 +1025,18 @@ void IconBar_joystick_assigned(unsigned no, char const *displayname) {
   if (no >= 2)
     return;
   iconbar_joystick_displayname[no] = displayname;
-  iconbar_map[1+no*2] = MAP(iconbar_tile_joytrno, 2);
 
-  iconbar_queue_map_update();
+  iconbar_control.map(1+no*2, 0) = MAP(iconbar_tile_joytrno, 2);
+  iconbar_control.updateDone();
 }
 
 void IconBar_joystick_unassigned(unsigned no) {
   if (no >= 2)
     return;
   iconbar_joystick_displayname[no] = "not assigned";
-  iconbar_map[1+no*2] = MAP(iconbar_tile_joytrno, 1);
 
-  iconbar_queue_map_update();
+  iconbar_control.map(1+no*2, 0) = MAP(iconbar_tile_joytrno, 1);
+  iconbar_control.updateDone();
 }
 
 void IconBar_mouse_assigned(char const *displayname) {
@@ -1068,7 +1093,6 @@ void IconBar_Setup() {
   sprite_set_palette(12, palette12);
   sprite_upload_palette();
 
-  iconbar_mapbase = sprite_alloc_vmem(sizeof(iconbar_map)/4, 1, ~0U);
   iconbar_tile_disktlno = sprite_alloc_vmem(0x10, 0x10, ~0U) / 0x10;
   iconbar_tile_disktrno = sprite_alloc_vmem(0x10, 0x10, ~0U) / 0x10;
   iconbar_tile_diskblno = sprite_alloc_vmem(0x10, 0x10, ~0U) / 0x10;
@@ -1108,45 +1132,6 @@ void IconBar_Setup() {
   iconbar_upload_tile(iconbar_tile_settingstlno, settingstl);
   iconbar_upload_tile(iconbar_tile_settingstr_blno, settingstr_bl);
   iconbar_upload_tile(iconbar_tile_settingsbrno, settingsbr);
-
-  iconbar_map[0] = MAP(iconbar_tile_joytlno, 8);
-  iconbar_map[1] = MAP(iconbar_tile_joytrno, 1);
-  iconbar_map[2] = MAP(iconbar_tile_joytlno, 8);
-  iconbar_map[3] = MAP(iconbar_tile_joytrno, 1);
-  iconbar_map[4] = MAP(iconbar_tile_mousetlno, 8);
-  iconbar_map[5] = MAP(iconbar_tile_mousetrno, 1); //the tile gets updated depending on mouse.assigned
-  iconbar_map[6] = MAP(iconbar_tile_lpentlno, 10);
-  iconbar_map[7] = MAP(iconbar_tile_lpentrno, 1); //the tile gets updated depending on mouse.assigned
-  iconbar_map[8] = MAP(iconbar_tile_disktlno, 10);
-  iconbar_map[9] = MAP(iconbar_tile_disktrno, 1);
-  iconbar_map[10] = MAP(iconbar_tile_disktlno, 10);
-  iconbar_map[11] = MAP(iconbar_tile_disktrno, 1);
-  iconbar_map[12] = MAP(iconbar_tile_disktlno, 10);
-  iconbar_map[13] = MAP(iconbar_tile_disktrno, 1);
-  iconbar_map[14] = MAP(iconbar_tile_disktlno, 10);
-  iconbar_map[15] = MAP(iconbar_tile_disktrno, 1);
-  iconbar_map[16] = MAP(iconbar_tile_settingstlno, 8);
-  iconbar_map[17] = MAP(iconbar_tile_settingstr_blno, 8);
-  iconbar_map[18] = MAP(iconbar_tile_joyblno, 8);
-  iconbar_map[19] = MAP(iconbar_tile_joybrno, 8);
-  iconbar_map[20] = MAP(iconbar_tile_joyblno, 8);
-  iconbar_map[21] = MAP(iconbar_tile_joybrno, 9);
-  iconbar_map[22] = MAP(iconbar_tile_mouseblno, 8);
-  iconbar_map[23] = MAP(iconbar_tile_mousebrno, 8);
-  iconbar_map[24] = MAP(iconbar_tile_lpenblno, 10);
-  iconbar_map[25] = MAP(iconbar_tile_lpenbrno, 10);
-  iconbar_map[26] = MAP(iconbar_tile_diskblno, 0); //state and animation by rewriting palette 0
-  iconbar_map[27] = MAP(iconbar_tile_diskbrno, 8);
-  iconbar_map[28] = MAP(iconbar_tile_diskblno, 0); //state and animation by rewriting palette 0
-  iconbar_map[29] = MAP(iconbar_tile_diskbrno, 9);
-  iconbar_map[30] = MAP(iconbar_tile_diskblno, 0); //state and animation by rewriting palette 0
-  iconbar_map[31] = MAP(iconbar_tile_diskbrno, 10);
-  iconbar_map[32] = MAP(iconbar_tile_diskblno, 0); //state and animation by rewriting palette 0
-  iconbar_map[33] = MAP(iconbar_tile_diskbrno, 12);
-  iconbar_map[34] = MAP(iconbar_tile_settingstr_blno, 9);
-  iconbar_map[35] = MAP(iconbar_tile_settingsbrno, 8);
-
-  FPGAComm_CopyToFPGA(FPGA_GRPH_SPRITES_RAM+iconbar_mapbase*4, iconbar_map, sizeof(iconbar_map));
 
   iconbar_fileselect.setFolder("/media");
 
