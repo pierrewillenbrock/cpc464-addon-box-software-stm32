@@ -165,6 +165,7 @@ static struct Alloc *findAllocationContaining(void *ptr) {
   //first, check the block leaking into this bucket(via extend)
   //no need to check for inuse, extend must be cleared when the allocation
   //is freed.
+  assert(alloc_list[i].extend <= ALLOC_LIST_SIZE);
   if (alloc_list[i].extend != ALLOC_LIST_SIZE) {
     unsigned j = alloc_list[i].extend;
     if (alloc_list[j].addr <= addr &&
@@ -179,6 +180,7 @@ static struct Alloc *findAllocationContaining(void *ptr) {
   //addr2bucket(alloc_list[i].addr) == /*this*/i
   //and inuse == 1
   while(i != ALLOC_LIST_SIZE) {
+    assert(i <= ALLOC_LIST_SIZE);
     if (alloc_list[i].addr <= addr &&
       (unsigned)(alloc_list[i].addr + alloc_list[i].size) > addr)
       return &alloc_list[i];
@@ -322,10 +324,10 @@ void MPROT_Setup() {
   mpu->RBAR = 0x20000010;
   mpu->RASR = 0x10000021; // 1<<((0x20 >> 1)+1) == 0x20000
 
-  //region#1: 0x2001f000 + 0x1000 for stack, No execute, R/W, write back,
+  //region#1: 0x2001e000 + 0x2000 for stack, No execute, R/W, write back,
   //read and write allocate
-  mpu->RBAR = 0x2001f011;
-  mpu->RASR = 0x13290017; // 1<<((0x16 >> 1)+1) == 0x1000
+  mpu->RBAR = 0x2001e011;
+  mpu->RASR = 0x13290019; // 1<<((0x18 >> 1)+1) == 0x2000
 
   uint32_t base = 0x20000000;
   unsigned region_no = 2;
@@ -426,6 +428,7 @@ void MemManage_Handler(void)
     }
     uint32_t addr = scb->MMFAR;
     //find the allocation
+    assert(addr > 0x20000000 && addr < 0x20020000);
     struct Alloc *alloc = findAllocationContaining((void*)addr);
     assert(alloc != NULL);
     //found it. now find a region to unprotect.
