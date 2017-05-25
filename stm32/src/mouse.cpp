@@ -10,8 +10,7 @@
 
 static int const mouse_scale = 2;
 
-class MouseInput : public input::Listener
- {
+class MouseInput : public input::Listener {
 public:
 	uint32_t x;
 	uint32_t y;
@@ -21,11 +20,8 @@ public:
 	sprite_info spriteinfo;
 	uint8_t sprite_tile_base;
 	uint16_t sprite_map_base;
-	virtual void inputReport( input::Report const &rep);
-	   MouseInput()
-		: x(ui::screen.rect().width*mouse_scale/2)
-		, y(ui::screen.rect().height*mouse_scale/2)
-		{}
+	virtual void inputReport(input::Report const &rep);
+	MouseInput();
 };
 
 class MouseDevInput : public input::DeviceListener
@@ -34,7 +30,10 @@ public:
 	virtual void inputDeviceAdd( input::Device *dev);
 };
 
-
+MouseInput::MouseInput()
+	: x(ui::screen.rect().width *mouse_scale/2)
+	, y(ui::screen.rect().height *mouse_scale/2) {
+}
 
 void MouseInput::inputReport( input::Report const &rep) {
 	if ((rep.flags & 1) && rep.usage == 0x10030) {
@@ -116,7 +115,7 @@ void MouseInput::inputReport( input::Report const &rep) {
 static MouseInput mouseinput;
 static MouseDevInput mousedevinput;
 
-void MouseDevInput::inputDeviceAdd( input::Device *dev) {
+void MouseDevInput::inputDeviceAdd(input::Device *dev) {
 	/** \todo filter for mouse like devices:
 	 * relative X/Y axis, button #1, #2
 	 * \todo add joystick support, also ui control
@@ -150,15 +149,15 @@ void Mouse_Setup() {
 		TILE_LINE(0,0,0,0,0,0,0,0, 0,0,0,0),
 		TILE_LINE(0,0,0,0,0,0,0,0, 0,0,0,0),
 		TILE_LINE(0,0,0,0,0,0,0,0, 0,0,0,0),
-		};
+	};
 #undef TILE_LINE
 	mouseinput.refIsStatic();
 	input::registerDeviceListener(&mousedevinput);
 	mouseinput.sprite_tile_base =
-		sprite_alloc_vmem(0x10*2, 0x10, ~0U) / 0x10;
+	        sprite_alloc_vmem(0x10*2, 0x10, ~0U) / 0x10;
 	FPGAComm_CopyToFPGA(FPGA_GRPH_SPRITES_RAM +
-			                     mouseinput.sprite_tile_base*0x10*4,
-			    tiles, sizeof(tiles));
+	                    mouseinput.sprite_tile_base*0x10*4,
+	                    tiles, sizeof(tiles));
 	mouseinput.sprite_map_base = sprite_alloc_vmem(2, 1, ~0U);
 	uint32_t map[] = {
 		//operator + promotes to (int), even if all arguments are uint8_t
@@ -166,8 +165,8 @@ void Mouse_Setup() {
 		uint32_t((mouseinput.sprite_tile_base + 1) << 2),
 	};
 	FPGAComm_CopyToFPGA(FPGA_GRPH_SPRITES_RAM +
-			    mouseinput.sprite_map_base*4,
-			    map, sizeof(map));
+	                    mouseinput.sprite_map_base*4,
+	                    map, sizeof(map));
 	mouseinput.spriteinfo.hpos = -16;
 	mouseinput.spriteinfo.vpos = -16;
 	mouseinput.spriteinfo.map_addr = mouseinput.sprite_map_base;
@@ -179,3 +178,5 @@ void Mouse_Setup() {
 	mouseinput.sprite.setZOrder(65536);
 	mouseinput.sprite.setPriority(65536);
 }
+
+// kate: indent-width 8; indent-mode cstyle; replace-tabs off;
