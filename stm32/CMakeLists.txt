@@ -142,13 +142,20 @@ add_executable(main
   ${MAIN_CSRCS}
   )
 
+set(MAIN_WRAP_SYMBOLS _calloc_r _free_r _malloc_r _memalign_r _realloc_r
+  _valloc_r _pvalloc_r _malloc_stats_r _mallinfo_r)
+
+foreach(SYM ${MAIN_WRAP_SYMBOLS})
+  string(APPEND MAIN_WRAP_FLAGS "-Wl,--wrap=${SYM} ")
+endforeach(SYM)
+
 set_target_properties(main PROPERTIES
   LINK_DEPENDS "${PROJECT_SOURCE_DIR}/link.ld"
-  LINK_FLAGS "-T \"${PROJECT_SOURCE_DIR}/link.ld\" -nostartfiles -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -O2 -Wl,--gc-section -Wl,--wrap=_calloc_r -Wl,--wrap=_free_r -Wl,--wrap=_malloc_r -Wl,--wrap=_memalign_r -Wl,--wrap=_realloc_r -Wl,--wrap=_valloc_r -Wl,--wrap=_pvalloc_r -Wl,--wrap=_malloc_stats_r -Wl,--wrap=_mallinfo_r")
+  LINK_FLAGS "-T \"${PROJECT_SOURCE_DIR}/link.ld\" -nostartfiles -static -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -O2 -Wl,--gc-section ${MAIN_WRAP_FLAGS}")
 
 set_target_properties(tester PROPERTIES
   LINK_DEPENDS "${PROJECT_SOURCE_DIR}/link.ld"
-  LINK_FLAGS "-T \"${PROJECT_SOURCE_DIR}/link.ld\" -nostartfiles -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -O2 -Wl,--gc-section")
+  LINK_FLAGS "-T \"${PROJECT_SOURCE_DIR}/link.ld\" -nostartfiles -static -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -O2 -Wl,--gc-section")
 
 # add a target to generate API documentation with Doxygen
 find_package(Doxygen)

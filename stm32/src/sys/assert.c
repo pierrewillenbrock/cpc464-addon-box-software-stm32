@@ -81,8 +81,8 @@ void HardFault_Handler(void) __attribute__((naked));
 void HardFault_Handler(void)
 {
 	__ASM volatile ("mov r0, sp"
-		"\n\tbl %0"
-		: : "g"(FatalExceptionHandler) : "r0"
+		"\n\tbl FatalExceptionHandler"
+		: : "X"(FatalExceptionHandler) : "r0"
 		);
 }
 
@@ -90,8 +90,8 @@ void BusFault_Handler(void) __attribute__((naked));
 void BusFault_Handler(void)
 {
 	__ASM volatile ("mov r0, sp"
-		"\n\tbl %0"
-		: : "g"(FatalExceptionHandler) : "r0"
+		"\n\tbl FatalExceptionHandler"
+		: : "X"(FatalExceptionHandler) : "r0"
 		);
 }
 
@@ -99,8 +99,8 @@ void UsageFault_Handler(void) __attribute__((naked));
 void UsageFault_Handler(void)
 {
 	__ASM volatile ("mov r0, sp"
-		"\n\tbl %0"
-		: : "g"(FatalExceptionHandler) : "r0"
+		"\n\tbl FatalExceptionHandler"
+		: : "X"(FatalExceptionHandler) : "r0"
 		);
 }
 

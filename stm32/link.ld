@@ -2,92 +2,119 @@
 
 MEMORY
 {
-  STACK (rwx) : ORIGIN = 0x2001f000, LENGTH = 4K
-  RAM   (rwx) : ORIGIN = 0x20000000, LENGTH = 124K
-  FLASH (rx)  : ORIGIN = 0x08000000, LENGTH = 1024K
+	FLASH (rx)  : ORIGIN = 0x08000000, LENGTH = 1024K
+	STACK  : ORIGIN = 0x2001e000, LENGTH = 8K
+	RAM   (!rwx) : ORIGIN = 0x20000000, LENGTH = 120K
 }
 
 /* inital stack pointer at end of memory */
-_estack =  0x20020000;/* gets hard coded into vector table */
-_bstack =  0x2001f000;
-_eheap = 0x2001f000;
+PROVIDE (_estack = 0x20020000);/* gets hard coded into vector table */
+PROVIDE (_bstack = 0x2001e000);
+PROVIDE (_eheap = 0x2001e000);
 SECTIONS
 {
-    .  = 0x08000000;          /* From 0x00000000 */
-    .isr_vector :
-    {
-        . = ALIGN(4);
-        KEEP(*(.isr_vector))            /* Startup code */
-        . = ALIGN(4);
-    } >FLASH
-/*  */
-  .text : {
-    . = ALIGN(4);
-    KEEP(*(.init))             /* Startup code from .init-section */
-    . = ALIGN(4);
-    __init_array_start = . ;
-    KEEP (*(SORT(.init_array.*)))
-    KEEP (*(.init_array))
-    __init_array_end = . ;
-    *(.text)        /* Program code */
-    *(.text*)                   /* remaining code */
-    *(.rodata)      /* Read only data */
-    *(.rodata*)      /* Read only data */
-    } > FLASH
-  .ARM.extab : {
-    *(.ARM.extab* .ARM.extab.gnu.linkonce.armextab.*)
-    } > FLASH AT > FLASH
+	.  = 0x08000000;          /* From 0x00000000 */
+	. = ALIGN(4);
+	.isr_vector : {
+		KEEP(*(.isr_vector))            /* Startup code */
+	} >FLASH AT > FLASH
+	/*  */
+	. = ALIGN(4);
+	/* the init sections are never written since we are not relocatable */
+	.init : {
+		KEEP(*(.init))             /* Startup code from .init-section */
+	} >FLASH AT > FLASH
+	. = ALIGN(4);
+	.preinit_array     :
+	{
+		PROVIDE (__preinit_array_start = .);
+		KEEP (*(.preinit_array*))
+		PROVIDE (__preinit_array_end = .);
+	} >FLASH AT > FLASH
+	.init_array : {
+		PROVIDE (__init_array_start = .) ;
+		KEEP (*(SORT(.init_array.*)))
+		KEEP (*(.init_array))
+		PROVIDE (__init_array_end = .) ;
+	} >FLASH AT > FLASH
+	. = ALIGN(4);
+	.text : {
+		*(.text)        /* Program code */
+		*(.text*)       /* remaining code */
+	} >FLASH AT > FLASH
+	.rodata : {
+		*(.rodata)      /* Read only data */
+		*(.rodata*)
+	} >FLASH AT > FLASH
+	.ARM.extab : {
+		*(.ARM.extab* .ARM.extab.gnu.linkonce.armextab.*)
+	} > FLASH AT > FLASH
 
-  __exidx_start = .;
-  .ARM.exidx : {
-    *(.ARM.exidx* .ARM.exidx.gnu.linkonce.armexidx.*)
-  } > FLASH AT > FLASH
-  __exidx_end = .;
+	. = .;
+	__exidx_start = .;
+	.ARM.exidx : {
+		*(.ARM.exidx* .ARM.exidx.gnu.linkonce.armexidx.*)
+	} > FLASH AT > FLASH
+	__exidx_end = .;
 
-  . = ALIGN(4);
-  _etext = .;
-  _sidata = _etext;
+	/* the got sections are never written since we are not relocatable */
+	.got : {
+		*(.got)
+		*(.got*)
+	} >FLASH AT > FLASH
 
-  .data : AT ( _sidata ) {
-        . = ALIGN(4);
-        /* This is used by the startup in order to initialize the .data secion */
-        _sdata = . ;
+	. = ALIGN(4); /* automatically placed sections ld wants to place here */
+	_etext = .;
+	_sidata = _etext;
 
-        *(.data)
-        *(.data*)
-	*(.memfunc)
-	*(.memfunc*)
+	.data : {
+		/* This is used by the startup in order to initialize the
+		 * .data secion. it must appear inside this section so the
+		 * linker knows the right vma(start of RAM). */
+		PROVIDE (_sdata = .) ;
 
-        . = ALIGN(4);
-        /* This is used by the startup in order to initialize the .data secion */
-        _edata = . ;
-    } >RAM
+		*(.data)
+		*(.data*)
+	} >RAM AT > FLASH
 
-    /* This is the uninitialized data section */
-    .bss :
-    {
-            . = ALIGN(4);
-        /* This is used by the startup in order to initialize the .bss secion */
-        _sbss = .;
+	. = ALIGN(4);
 
-        *(.bss)
-        *(.bss*)
-        *(COMMON)
+	.memfunc : {
+		*(.memfunc)
+		*(.memfunc*)
+	} >RAM AT > FLASH
 
-            . = ALIGN(4);
-            /* This is used by the startup in order to initialize the .bss secion */
-         _ebss = . ;
-    } >RAM
-    /* bheap < 0x20010000:
-      align(128): uses up to 3 MPU slots
-      align(1024): uses up to 2 MPU slots
-      bheap < 0x20020000:
-      align(256): uses up to 3 MPU slots
-      align(2048): uses up to 2 MPU slots
-      */
-   . = ALIGN(128);
-   PROVIDE (_bheap = .);
- }
+	. = ALIGN(4);
+
+	. = ALIGN(4); /* automatically placed sections ld wants to place here */
+
+	/* This is used by the startup in order to initialize the .data secion */
+	PROVIDE (_edata = .);
+	/* This is used by the startup in order to initialize the .bss secion */
+	PROVIDE (_sbss = .);
+
+	/* This is the uninitialized data section */
+	.bss :
+	{
+		*(.bss)
+		*(.bss*)
+		*(COMMON)
+	} >RAM AT > RAM
+
+	. = .;
+
+	/* This is used by the startup in order to initialize the .bss secion */
+	PROVIDE (_ebss = .);
+	/* bheap < 0x20010000:
+	 align(128): uses up to 3 MPU slots
+	 align(1024): uses up to 2 MPU slots
+	 bheap < 0x20020000:
+	 align(256): uses up to 3 MPU slots
+	 align(2048): uses up to 2 MPU slots
+	 */
+	. = ALIGN(128);
+	PROVIDE (_bheap = .);
+}
 
 /*  Libraries to link against. */
 

@@ -153,8 +153,11 @@ static void SetSysClock(void);
   * @{
   */
 
-extern void (*__init_array_start)();
-extern void (*__init_array_end)();
+/* These magic symbols are provided by the linker.  */
+extern void (*__preinit_array_start []) (void) __attribute__((weak));
+extern void (*__preinit_array_end []) (void) __attribute__((weak));
+extern void (*__init_array_start []) (void) __attribute__((weak));
+extern void (*__init_array_end []) (void) __attribute__((weak));
 
 void MPROT_Setup();
 
@@ -207,8 +210,13 @@ void SystemInit(void)
 
   /* run init code */
   void (**init_proc)();
-  init_proc = &__init_array_start;
-  while(init_proc != &__init_array_end) {
+  init_proc = __preinit_array_start;
+  while(init_proc != __preinit_array_end) {
+    (*init_proc)();
+    init_proc++;
+  }
+  init_proc = __init_array_start;
+  while(init_proc != __init_array_end) {
     (*init_proc)();
     init_proc++;
   }
