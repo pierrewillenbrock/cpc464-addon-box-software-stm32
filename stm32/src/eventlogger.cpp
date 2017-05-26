@@ -37,6 +37,7 @@ void LogEvent(const char *info, void *extra) {
   i.info = info;
   i.extra = extra;
   i.time = now;
+  i.rep = 0;
 }
 
 void LogEvent(const char *info) {

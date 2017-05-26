@@ -24,5 +24,5 @@ namespace usb {
 
 }
 
-static OTG_Core_TypeDef * const otgc = OTGF_CORE;
-static OTG_Host_TypeDef * const otgh = OTGF_HOST;
+static OTG_Core_TypeDef * otgc = OTGF_CORE;
+static OTG_Host_TypeDef * otgh = OTGF_HOST;

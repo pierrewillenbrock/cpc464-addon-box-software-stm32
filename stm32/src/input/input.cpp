@@ -26,4 +26,5 @@ void input::Device::reportInput( input::Report const &rep) {
 void input::Device::deviceRemove() {
 	for(auto &l : listeners)
 		l->remove(this);
+	listeners.clear();
 }

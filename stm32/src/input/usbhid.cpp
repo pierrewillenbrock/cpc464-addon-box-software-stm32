@@ -275,8 +275,7 @@ public:
 	USBHIDDev(RefPtr<usb::Device> device)
 		: device(device)
 		{}
-	~USBHIDDev() {
-		deviceRemove();
+	virtual ~USBHIDDev() {
 #ifdef SUPPORT_INPUTS
 		for(auto &r : inputreports)
 			delete r;
@@ -1445,6 +1444,8 @@ void USBHIDDev::disconnected(RefPtr<usb::Device> /*device*/) {
 	ctlurb.u.endpoint = NULL;
 	usb::retireURB(&irqurb.u);
 	irqurb.u.endpoint = NULL;
+	deviceRemove();
+	delete this;
 }
 
 input::ControlInfo USBHIDDev::getControlInfo(uint16_t control_info_index) {

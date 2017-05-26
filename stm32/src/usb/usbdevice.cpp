@@ -428,11 +428,13 @@ void usb::Device::disconnected() {
 			if (intf.claimed) {
 				assert(isRWPtr(intf.claimed));
 				intf.claimed->disconnected(this);
+				intf.claimed = NULL;
 			}
 		}
 		if (claimed) {
 			assert(isRWPtr(claimed));
 			claimed->disconnected(this);
+			claimed = NULL;
 		}
 	}
 

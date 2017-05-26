@@ -6,6 +6,7 @@
 #include <irq.h>
 #include <array>
 #include <list>
+#include <algorithm>
 
 static uint16_t palette[128] = { 0 };
 
@@ -54,8 +55,7 @@ static std::array<BlockInfo,64> blocks = {{
 //if addr == ~0U, looks for space anywhere in the vmem
 //return ~0U if it could not find room.
 unsigned sprite_alloc_vmem(size_t size, unsigned align, unsigned addr) {
-	uint32_t isrlevel;
-	ISR_Disable(isrlevel);
+	ISR_Guard g;
 	uint8_t p = 0;
 	uint16_t ca = 0;
 	if (addr != ~0U) {
@@ -68,7 +68,7 @@ unsigned sprite_alloc_vmem(size_t size, unsigned align, unsigned addr) {
 		}
 		if (p >= blocks.size() || blocks[p].type != BlockType::Unused ||
 			ca + blocks[p].size < addr + size)
-			goto fail;
+			return ~0U;
 	} else {
 		uint8_t best_block = 0xff;
 		while(p < blocks.size() && blocks[p].type != BlockType::Invalid) {
@@ -89,7 +89,7 @@ unsigned sprite_alloc_vmem(size_t size, unsigned align, unsigned addr) {
 			p = blocks[p].next;
 		}
 		if (best_block >= blocks.size())
-			goto fail;
+			return ~0U;
 		p = best_block;
 		ca = addr;
 		if (addr & (align-1)) {
@@ -110,7 +110,7 @@ unsigned sprite_alloc_vmem(size_t size, unsigned align, unsigned addr) {
 				break;
 		}
 		if (i >= blocks.size())
-			goto fail;
+			return ~0U;
 		blocks[i].next = blocks[p].next;
 		blocks[i].size = blocks[p].size-size;
 		blocks[i].type = BlockType::Unused;
@@ -125,7 +125,7 @@ unsigned sprite_alloc_vmem(size_t size, unsigned align, unsigned addr) {
 				break;
 		}
 		if (i >= blocks.size())
-			goto fail;
+			return ~0U;
 		blocks[i].next = blocks[p].next;
 		blocks[i].size = size;
 		blocks[i].type = BlockType::Used;
@@ -144,7 +144,7 @@ unsigned sprite_alloc_vmem(size_t size, unsigned align, unsigned addr) {
 				break;
 		}
 		if (j >= blocks.size())
-			goto fail;
+			return ~0U;
 		blocks[j].type = BlockType::Unused;
 		blocks[j].size = blocks[p].size - size - addr + ca;
 		blocks[j].next = blocks[p].next;
@@ -156,16 +156,11 @@ unsigned sprite_alloc_vmem(size_t size, unsigned align, unsigned addr) {
 		blocks[p].next = i;
 	}
 
-	ISR_Enable(isrlevel);
 	return addr;
-fail:
-	ISR_Enable(isrlevel);
-	return ~0U;
 }
 
 void sprite_free_vmem(unsigned addr) {
-	uint32_t isrlevel;
-	ISR_Disable(isrlevel);
+	ISR_Guard g;
 	uint8_t p = 0;
 	uint8_t pp = 0xff;
 	uint16_t ca = 0;
@@ -177,27 +172,23 @@ void sprite_free_vmem(unsigned addr) {
 		pp = p;
 		p = blocks[p].next;
 	}
-	if (p >= blocks.size() || blocks[p].type == BlockType::Invalid)
-		goto out;
+	assert(p < blocks.size() && blocks[p].type != BlockType::Invalid);
 	if (p != 0 && blocks[pp].type == BlockType::Unused) {
 		//merge into previous block
 		blocks[pp].size += blocks[p].size;
 		blocks[p].type = BlockType::Invalid;
 		blocks[pp].next = blocks[p].next;
 		p = pp;
+	} else {
+		blocks[p].type = BlockType::Unused;
 	}
-	{
-		uint8_t n = blocks[p].next;
-		if (n < blocks.size() && blocks[n].type == BlockType::Unused) {
-			//merge next block
-			blocks[p].size += blocks[n].size;
-			blocks[p].next = blocks[n].next;
-			blocks[p].type = BlockType::Unused;
-			blocks[n].type = BlockType::Invalid;
-		}
+	uint8_t n = blocks[p].next;
+	if(n < blocks.size() && blocks[n].type == BlockType::Unused) {
+		//merge next block
+		blocks[p].size += blocks[n].size;
+		blocks[p].next = blocks[n].next;
+		blocks[n].type = BlockType::Invalid;
 	}
-out:
-	ISR_Enable(isrlevel);
 }
 
 struct SpriteVMemInfo spritevmeminfo() {
@@ -207,13 +198,14 @@ struct SpriteVMemInfo spritevmeminfo() {
 	info.free = 0;
 	info.used = 0;
 
+	ISR_Guard g;
 	for(auto const &block : blocks) {
 		if(block.type == BlockType::Unused) {
 			info.free += block.size;
 			if (block.size > info.largestFreeBlock)
 				info.largestFreeBlock = block.size;
 		}
-		if(block.type ==  BlockType::Used)
+		if(block.type == BlockType::Used)
 			info.used += block.size;
 	}
 
@@ -342,6 +334,9 @@ void Sprite::checkAllocations() {
 
 void Sprite::doRegister(Sprite *sprite) {
 	ISR_Guard g;
+	assert(std::find
+	       (sprite_registered.begin(), sprite_registered.end(), sprite) ==
+	       sprite_registered.end());;
 	sprite_registered.push_back(sprite);
 	checkAllocations();
 }

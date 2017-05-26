@@ -74,6 +74,7 @@ namespace usb {
 
 	class DriverDevice {
 	public:
+		virtual ~DriverDevice() {}
 		//called once the interface is ready for use
 		virtual void interfaceClaimed(uint8_t /*interfaceNumber*/, uint8_t /*alternateSetting*/) {};
 		virtual void deviceClaimed() {};

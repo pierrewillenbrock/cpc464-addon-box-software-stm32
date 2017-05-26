@@ -40,6 +40,7 @@ namespace input {
 	private:
 		std::vector<RefPtr<Listener> > listeners;
 	public:
+		virtual ~Device() {}
 		virtual ControlInfo getControlInfo(uint16_t control_info_index) = 0;
 		void addListener(RefPtr<Listener> listener);
 		void reportInput( Report const &rep);

@@ -72,7 +72,7 @@ public:
 	USBHUBDev(RefPtr<usb::Device> device)
 		: device(device)
 		{}
-	~USBHUBDev() {
+	virtual ~USBHUBDev() {
 	}
 	//does nothing since hubs do not support SET INTERFACE
 	virtual void deviceClaimed();
@@ -299,6 +299,7 @@ void USBHUBDev::disconnected(RefPtr<usb::Device> /*device*/) {
 			p.device = NULL;
 		}
 	}
+	delete this;
 }
 
 void USBHUBDev::checkStatus() {

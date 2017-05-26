@@ -91,7 +91,6 @@ void MemInfo::closeClicked() {
 }
 
 void MemInfo::setVisible(bool visible) {
-  Frame::setVisible(visible);
   if (visible) {
     unsigned w = 40;
     unsigned h = infolines.size()+1;
@@ -118,6 +117,7 @@ void MemInfo::setVisible(bool visible) {
     infolines[12].input.setValue(spriteinfo.used);
     infolines[13].input.setValue(spriteinfo.largestFreeBlock);
   }
+  Frame::setVisible(visible);
 }
 
 // kate: indent-width 2; indent-mode cstyle;
