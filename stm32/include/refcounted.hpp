@@ -9,27 +9,31 @@
 
 template<typename R> class RefPtr;
 
-template<typename K>
-class Refcounted {
+class RefcountedBase {
 private:
 	unsigned refcount;
 	template<typename R>
 	friend class RefPtr;
 	template<typename R>
 	friend class RefcountProxy;
+	template<typename R>
+	friend class Refcounted;
 	void refcountinc() { refcount++; }
 	void refcountdec() {
 		refcount--;
-		if (!refcount) {
-			K *_this = dynamic_cast<K*>(this);
-			delete _this;
-		}
+		if (!refcount)
+			delete this;//Possible trouble here: maybe we don't call the correct destructor, even though it is virtual and abstract.
 	}
 	void refcountnonzero() { assert(refcount != 0); }
 public:
-	Refcounted() : refcount(0) {}
-	virtual ~Refcounted() { assert(refcount == 0); }
+	RefcountedBase() : refcount(0) {}
+	virtual ~RefcountedBase() = 0;
 	void refIsStatic() { refcount = 0x80000000UL; }
+};
+template<typename K>
+class Refcounted : public virtual RefcountedBase {
+public:
+	virtual ~Refcounted() { assert(refcount == 0); }
 };
 
 template <class RO>
@@ -114,6 +118,10 @@ public:
 	}
 	bool operator== (R *ptr) {
 		return this->ptr == ptr;
+	}
+	template<typename T>
+	operator RefPtr<T>() {
+		return RefPtr<T>(ptr);
 	}
 };
 

@@ -64,6 +64,11 @@ set(MAIN_CSRCS
   src/timer.cpp
   src/eventlogger.cpp
   src/usbdevicenotify.cpp
+  src/lang.cpp
+  src/mouse.cpp
+  src/joystick.cpp
+  src/keyboard.cpp
+  src/refcounted.cpp
   src/fpga/fpga_comm.cpp
   src/fpga/sprite.cpp
   src/fpga/font.c
@@ -82,10 +87,8 @@ set(MAIN_CSRCS
   src/usb/usbchannel.cpp
   src/usb/usbdevice.cpp
   src/usb/usbhub.cpp
-  src/lang.cpp
   src/input/usbhid.cpp
   src/input/input.cpp
-  src/mouse.cpp
   src/ui/iconbar.cpp
   src/ui/ui.cpp
   src/ui/hint.cpp

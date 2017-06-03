@@ -29,7 +29,9 @@
 #include <fpga/sprite.hpp>
 #include <usb/usb.hpp>
 #include <input/usbhid.h>
-#include <mouse.h>
+#include <mouse.hpp>
+#include <joystick.hpp>
+#include <keyboard.hpp>
 #include <ui/iconbar.h>
 #include <ui/ui.hpp>
 #include <hw/led.h>
@@ -393,6 +395,8 @@ int main()
 	Timer_Repeating(500000, graphicsCheckTimer, NULL);
 
 	Mouse_Setup();
+	Joystick_Setup();
+	Keyboard_Setup();
 
 	IconBar_Setup();
 

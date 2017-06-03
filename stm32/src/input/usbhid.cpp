@@ -8,6 +8,8 @@
 #include <deque>
 #include <bits.h>
 #include <input/input.hpp>
+#include <sstream>
+#include <iomanip>
 
 #include <usbproto/hid.h>
 
@@ -295,7 +297,9 @@ public:
 	}
 	virtual void interfaceClaimed(uint8_t interfaceNumber, uint8_t alternateSetting);
 	virtual void disconnected(RefPtr<usb::Device> /*device*/);
-	virtual input::ControlInfo getControlInfo(uint16_t control_info_index);
+	virtual std::vector<input::Report> getCurrentInputReports() const;
+	virtual uint32_t countryCode() const;
+	std::string name() const;
 };
 
 static const uint16_t USBClassHID = 3;
@@ -992,7 +996,12 @@ void USBHIDDev::setValues(InOut *inout, std::vector<int32_t> &values) {
 		hir.flags |= 0x8;
 	if (inout->flags & USBHID_MAINFLAG_NULL_STATE)
 		hir.flags |= 0x10;
-	hir.control_info_index = inout->control_info_index;
+	hir.logical_maximum = inout->logical_maximum;
+	hir.logical_minimum = inout->logical_minimum;
+	hir.physical_maximum = inout->physical_maximum;
+	hir.physical_minimum = inout->physical_minimum;
+	hir.unit = inout->unit;
+	hir.unit_exponent = inout->unit_exponent;
 	if (inout->flags & USBHID_MAINFLAG_VARIABLE) {
 		for(unsigned i = 0; i < values.size(); i++) {
 			if (i < inout->last_values.size() &&
@@ -1020,7 +1029,6 @@ void USBHIDDev::setValues(InOut *inout, std::vector<int32_t> &values) {
 				hir.usage = inout->usages[0].getUsage
 					(lv-inout->logical_minimum);
 				hir.value = 0;
-				hir.control_info_index = inout->control_info_index;
 				reportInput(hir);
 			}
 		}
@@ -1448,31 +1456,85 @@ void USBHIDDev::disconnected(RefPtr<usb::Device> /*device*/) {
 	delete this;
 }
 
-input::ControlInfo USBHIDDev::getControlInfo(uint16_t control_info_index) {
-	input::ControlInfo r;
-#if defined(SUPPORT_INPUTS) || defined(SUPPORT_OUTPUTS) || defined(SUPPORT_FEATURES)
-	if (control_info_index >= inouts.size())
-		return r;
-	InOut *inout = inouts[control_info_index];
-	r.logical_minimum = inout->logical_minimum;
-	r.logical_maximum = inout->logical_maximum;
-	r.physical_minimum = inout->physical_minimum;
-	r.physical_maximum = inout->physical_maximum;
-	r.unit_exponent = inout->unit_exponent;
-	r.unit = inout->unit;
-	r.flags = 0;
-	if (inout->flags & USBHID_MAINFLAG_RELATIVE)
-		r.flags |= 0x1;
-	if (inout->flags & USBHID_MAINFLAG_WRAP)
-		r.flags |= 0x2;
-	if (inout->flags & USBHID_MAINFLAG_NON_LINEAR)
-		r.flags |= 0x4;
-	if (inout->flags & USBHID_MAINFLAG_NO_PREFERRED)
-		r.flags |= 0x8;
-	if (inout->flags & USBHID_MAINFLAG_NULL_STATE)
-		r.flags |= 0x10;
-#endif
-	return r;
+std::vector<input::Report> USBHIDDev::getCurrentInputReports() const {
+	std::vector<input::Report> res;
+	for(auto const & rep : inputreports) {
+		for(auto const &elem : rep->elements) {
+			input::Report hir;
+			InOut *inout = elem.inout;
+			//set some good defaults
+			hir.device = const_cast<USBHIDDev*>(this);
+			hir.flags = 0;
+			if(inout->flags & USBHID_MAINFLAG_RELATIVE)
+				hir.flags |= input::Report::Relative;
+			if(inout->flags & USBHID_MAINFLAG_WRAP)
+				hir.flags |= input::Report::Wraps;
+			if(inout->flags & USBHID_MAINFLAG_NON_LINEAR)
+				hir.flags |= input::Report::Nonlinear;
+			if(inout->flags & USBHID_MAINFLAG_NO_PREFERRED)
+				hir.flags |= input::Report::NoPreferredState;
+			if(inout->flags & USBHID_MAINFLAG_NULL_STATE)
+				hir.flags |= input::Report::HasNullState;
+			hir.logical_maximum = inout->logical_maximum;
+			hir.logical_minimum = inout->logical_minimum;
+			hir.physical_maximum = inout->physical_maximum;
+			hir.physical_minimum = inout->physical_minimum;
+			hir.unit = inout->unit;
+			hir.unit_exponent = inout->unit_exponent;
+			if(inout->flags & USBHID_MAINFLAG_VARIABLE) {
+				for(unsigned i = 0; i < inout->report_count; i++) {
+					if (i < inout->last_values.size())
+						hir.value = inout->last_values[i];
+					else
+						hir.value = 0;
+					hir.usage = inout->usages[0].getUsage(i);
+					res.push_back(hir);
+				}
+			} else {
+				//report assertion for all valid in last_values.
+				for(int v = inout->logical_minimum;
+						v <= inout->logical_maximum;
+						v++) {
+
+					bool found = false;
+					for(auto &lv : inout->last_values) {
+						if(lv == v) {
+							found = true;
+							break;
+						}
+					}
+					hir.usage = inout->usages[0].getUsage
+						    (v-inout->logical_minimum);
+					hir.value = found?1:0;
+
+					res.push_back(hir);
+				}
+			}
+		}
+	}
+	return res;
+}
+
+uint32_t USBHIDDev::countryCode() const {
+	return hiddescriptor->bCountryCode;
+}
+
+std::string USBHIDDev::name() const {
+	std::stringstream str;
+	if(device->manufacturer().empty()) {
+		unsigned int vendor = device->getDeviceDescriptor().idVendor;
+		str << std::hex << std::setw(4) << std::setfill('0') << vendor;
+	} else {
+		str << device->manufacturer();
+	}
+	str << " ";
+	if(device->product().empty()) {
+		unsigned int product = device->getDeviceDescriptor().idProduct;
+		str << std::hex << std::setw(4) << std::setfill('0') << product;
+	} else {
+		str << device->product();
+	}
+	return str.str();
 }
 
 static USBHID usbhid_driver;
