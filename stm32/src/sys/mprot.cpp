@@ -312,7 +312,12 @@ static struct {
   uint32_t gen;
 } regions[16];
 
+static bool mprot_initialized = false;
+
 void MPROT_Setup() {
+  if (mprot_initialized)
+    return;
+  mprot_initialized = true;
   //setup memory protection unit
   SCB_Type *scb = SCB;
   MPU_Type *mpu = MPU;
@@ -477,6 +482,8 @@ void MemManage_Handler(void)
 
 static void malloc_hook(void *ptr, size_t size) {
   ISR_Guard g;
+  if (!mprot_initialized)
+    MPROT_Setup();
   if (size == 0)
     return;
   while (!ptr) {}
@@ -489,6 +496,8 @@ static void malloc_hook(void *ptr, size_t size) {
 
 static void free_hook(void *ptr) {
   ISR_Guard g;
+  if (!mprot_initialized)
+    MPROT_Setup();
   if (!ptr)
     return;
   if ((uint32_t)ptr < RAM_BASE ||
@@ -515,6 +524,8 @@ static void free_hook(void *ptr) {
 
 static void realloc_hook(void *newptr, void *oldptr, size_t newsize) {
   ISR_Guard g;
+  if (!mprot_initialized)
+    MPROT_Setup();
   if (newsize == 0) {
     free_hook(oldptr);
     return;
@@ -531,6 +542,8 @@ static void realloc_hook(void *newptr, void *oldptr, size_t newsize) {
 
 static void calloc_hook(void *ptr, size_t nmemb, size_t size) {
   ISR_Guard g;
+  if (!mprot_initialized)
+    MPROT_Setup();
   size *= nmemb;
   if (size == 0)
     return;
@@ -599,6 +612,8 @@ extern "C" {
       memcpy(p, ptr, oldsize);
     __wrap__free_r(r, ptr);
     return p;
+    //avoid unused function warning
+    (void)realloc_hook;
 #else
     mprot_unprotect();
     void *p = __real__realloc_r(r,ptr,size);
