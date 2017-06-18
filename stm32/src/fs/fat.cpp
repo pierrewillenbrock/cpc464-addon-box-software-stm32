@@ -341,7 +341,7 @@ struct FatDirInode : public FatInode {
 
 			//do we have a long name?
 			if (!long_name.empty()) {
-				name = Utf16ToUtf8(long_name);
+				name = lang::Utf16ToUtf8(long_name);
 			} else {
 				name = "";
 				for(unsigned i = 0; i < 8; i++) {

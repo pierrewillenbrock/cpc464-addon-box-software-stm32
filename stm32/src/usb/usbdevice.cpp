@@ -248,7 +248,7 @@ void usb::Device::urbCompletion(int result, URB *u) {
 			break;
 		}
 
-		      m_manufacturer = Utf16ToUtf8(
+		      m_manufacturer = lang::Utf16ToUtf8(
 			std::basic_string<uint16_t>(d->unicodeChars,
 						    (d->bLength-2)/2));
 
@@ -283,7 +283,7 @@ void usb::Device::urbCompletion(int result, URB *u) {
 			break;
 		}
 
-		      m_product = Utf16ToUtf8(
+		      m_product = lang::Utf16ToUtf8(
 			std::basic_string<uint16_t>(d->unicodeChars,
 						    (d->bLength-2)/2));
 

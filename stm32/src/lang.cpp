@@ -1,7 +1,9 @@
 
 #include "lang.hpp"
 
-std::string Utf16ToUtf8(std::basic_string<uint16_t> const &str) {
+using namespace lang;
+
+std::string lang::Utf16ToUtf8(std::basic_string<uint16_t> const &str) {
 	std::string out;
 	for(auto it = str.begin(); it != str.end(); it++) {
 		uint32_t codepoint = *it;
