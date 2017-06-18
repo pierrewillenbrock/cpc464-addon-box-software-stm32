@@ -97,10 +97,13 @@
 
 namespace ui {
   static Control *toplevel = NULL;
-  static Control *current_keyfocus = NULL;
+  static Control *current_inputfocus = NULL; //shared with joystick
+  static Point current_inputfocus_point(0,0);
   static Control *current_mousefocus = NULL;
   static MouseState mousestate;
+  static JoyState joystate;
   static uint8_t key_modifiers = 0;
+  static uint8_t key_country = 0;
 }
 
 using namespace ui;
@@ -172,7 +175,9 @@ void UI_mouseWheel(int8_t dz) {
     current_mousefocus->mouseWheel(dz, mousestate);
 }
 
-void UI_keyDown(uint16_t /*keycode*/) {
+void UI_keyDown(uint16_t keycode) {
+  if(current_inputfocus)
+    current_inputfocus->keyDown(keycode, key_modifiers, key_country);
   /**\todo sending on keycodes is easy, but we also need to decode
      to ascii, add key-repeat for the keyChar, use
      arrow keys/tab/shift+tab/backtab for navigation and enter/space/return etc.
@@ -180,7 +185,9 @@ void UI_keyDown(uint16_t /*keycode*/) {
    */
 }
 
-void UI_keyUp(uint16_t /*keycode*/) {
+void UI_keyUp(uint16_t keycode) {
+  if(current_inputfocus)
+    current_inputfocus->keyUp(keycode, key_modifiers, key_country);
 }
 
 void UI_keyCountry(uint8_t country) {
@@ -188,18 +195,28 @@ void UI_keyCountry(uint8_t country) {
 }
 
 void UI_joyTrgDown(ui::JoyTrg trg) {
+  joystate.triggers |= (1 << (int)trg);
+  if(current_inputfocus)
+    current_inputfocus->joyTrgDown(trg, joystate);
 }
 
 void UI_joyTrgUp(ui::JoyTrg trg) {
+  joystate.triggers &= ~(1 << (int)trg);
+  if(current_inputfocus)
+    current_inputfocus->joyTrgUp(trg, joystate);
 }
 
 void UI_joyAxis(int8_t x, int8_t y) {
+  joystate.x = x;
+  joystate.y = y;
+  if(current_inputfocus)
+    current_inputfocus->joyAxis(joystate);
 }
 
 void UI_setTopLevelControl(ui::Control *control) {
   toplevel = control;
-  if (current_keyfocus)
-    current_keyfocus->keyLeave();
+  if (current_inputfocus)
+    current_inputfocus->focusLeave();
   if (current_mousefocus) {
     for(unsigned i = 0; i < 8; i++) {
       if (mousestate.buttons & (1 << i))
@@ -208,9 +225,11 @@ void UI_setTopLevelControl(ui::Control *control) {
     current_mousefocus->mouseLeave(mousestate);
   }
   if (control) {
-    current_keyfocus = control->getNextControl(Control::Direction::First, Point(0,0));
-    if (!current_keyfocus)
-      current_keyfocus = control;
+    current_inputfocus_point = Point(0,0);
+    current_inputfocus = control->getNextControl(Control::Direction::Tab, NULL,
+					               current_inputfocus_point);
+    if (!current_inputfocus)
+      current_inputfocus = control;
     Rect r = control->getGlobalRect();
     current_mousefocus = control->getChildAt(Point(mousestate.x-r.x,
 						   mousestate.y-r.y));
@@ -223,12 +242,74 @@ void UI_setTopLevelControl(ui::Control *control) {
       if (mousestate.buttons & (1 << i))
 	current_mousefocus->mouseDown(i, mousestate);
     }
-    current_keyfocus->keyEnter();
+    current_inputfocus->focusEnter();
   } else {
-    current_keyfocus = NULL;
+    current_inputfocus = NULL;
     current_mousefocus = NULL;
   }
 }
 
+void UI_moveFocus(Control::Direction dir) {
+  if(!current_inputfocus)
+    return;
+  Control *nextFocus = current_inputfocus;
+  nextFocus = current_inputfocus->getNextControl(dir, current_inputfocus,
+              current_inputfocus_point);
+  if(!nextFocus)
+    return;
+  if (nextFocus == current_inputfocus)
+    return;
+  current_inputfocus->focusLeave();
+  current_inputfocus = nextFocus;
+  current_inputfocus->focusEnter();
+}
+
+void UI_setFocus(ui::Control *control) {
+  if (current_inputfocus == control)
+    return;
+  if (current_inputfocus)
+    current_inputfocus->focusLeave();
+  current_inputfocus = control;
+  if (current_inputfocus) {
+    current_inputfocus->focusEnter();
+    Rect r = current_inputfocus->getGlobalRect();
+    if (current_inputfocus_point.x < r.x)
+      current_inputfocus_point.x = r.x;
+    if (current_inputfocus_point.x >= r.x + r.width)
+      current_inputfocus_point.x = r.x + r.width-1;
+    if (current_inputfocus_point.y < r.y)
+      current_inputfocus_point.y = r.y;
+    if (current_inputfocus_point.y >= r.y + r.height)
+      current_inputfocus_point.y = r.y + r.height-1;
+  }
+}
+
+void Control::joyTrgDown(JoyTrg trg, JoyState /*state*/) {
+  //Default for movement: move to the next control
+  switch(trg) {
+  case JoyTrg::Up:
+    UI_moveFocus(Control::Direction::Up);
+    break;
+  case JoyTrg::Down:
+    UI_moveFocus(Control::Direction::Down);
+    break;
+  case JoyTrg::Left:
+    UI_moveFocus(Control::Direction::Left);
+    break;
+  case JoyTrg::Right:
+    UI_moveFocus(Control::Direction::Right);
+    break;
+  case JoyTrg::Next:
+    UI_moveFocus(Control::Direction::Tab);
+    break;
+  case JoyTrg::Previous:
+    UI_moveFocus(Control::Direction::Backtab);
+    break;
+  case JoyTrg::Btn1:
+    keySelect();
+    break;
+  default: break;
+  }
+}
 
 // kate: indent-width 2; indent-mode cstyle;
