@@ -31,3 +31,21 @@ std::string lang::Utf16ToUtf8(std::basic_string<uint16_t> const &str) {
 	return out;
 }
 
+std::string lang::elide(std::string const &str, size_t len, enum ElideMode mode) {
+	if(str.size() < len)
+		return str;
+	switch(mode) {
+	case ElideLeft:
+		return std::string("...") + str.substr(str.size()-len+3, len-3);
+	case ElideRight:
+		return str.substr(0, len-3) + std::string("...");
+	case ElideMiddle: {
+		size_t len_half = (len+1-3)/2;
+		return str.substr(0, len_half) + std::string("...") +
+		str.substr(str.size() - len + 3 + len_half, len - 3 - len_half);
+	}
+	default:
+		return str;
+	}
+}
+
