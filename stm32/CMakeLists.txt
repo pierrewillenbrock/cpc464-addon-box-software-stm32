@@ -69,6 +69,7 @@ set(MAIN_CSRCS
   src/joystick.cpp
   src/keyboard.cpp
   src/refcounted.cpp
+  src/joyport.cpp
   src/fpga/fpga_comm.cpp
   src/fpga/sprite.cpp
   src/fpga/font.c

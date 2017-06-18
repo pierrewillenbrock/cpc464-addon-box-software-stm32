@@ -38,6 +38,7 @@
 #include <deferredwork.hpp>
 #include <ui/notify.hpp>
 #include <usbdevicenotify.h>
+#include <joyport.hpp>
 
 static void LED_Setup() {
 	LED_RCC_FUNC(LED_RCC, ENABLE);
@@ -397,6 +398,8 @@ int main()
 	Mouse_Setup();
 	Joystick_Setup();
 	Keyboard_Setup();
+
+	joyport::setup();
 
 	IconBar_Setup();
 
