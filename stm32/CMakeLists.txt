@@ -91,6 +91,10 @@ set(MAIN_CSRCS
   src/input/usbhid.cpp
   src/input/input.cpp
   src/ui/iconbar.cpp
+  src/ui/iconbar_control.cpp
+  src/ui/iconbar_diskmenu.cpp
+  src/ui/iconbar_settingsmenu.cpp
+  src/ui/iconbar_joystickmenu.cpp
   src/ui/ui.cpp
   src/ui/hint.cpp
   src/ui/menu.cpp
