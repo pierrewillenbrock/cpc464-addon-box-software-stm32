@@ -15,7 +15,7 @@ void Timer_Setup();
  * \param usec Time to wait for callback, in microseconds
  * \param func Function to be called
  * \param data Data the function should be called with
- * \return Handle of the timer
+ * \return Handle of the timer. Will never be 0.
  */
 uint32_t Timer_Oneshot(uint32_t usec, Timer_Func func, void* data);
 uint32_t Timer_Repeating(uint32_t usec, Timer_Func func, void* data);
