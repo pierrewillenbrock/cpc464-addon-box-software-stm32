@@ -956,8 +956,18 @@ void USBHIDDev::parseReport(std::vector<Report*> const &reports, std::vector<uin
 			v = (dp >> pos);
 			uint32_t m = (1 << size);
 			v &= m -1;
-			if (v & (m>>1)) //make it signed
-				v -= m;
+			// If Logical Minimum and Logical Maximum are both
+			// positive values then a sign bit is unnecessary in
+			// the report field and the contents of a field can be
+			// assumed to be an unsigned value. Otherwise, all
+			// integer values are signed values represented in
+			// 2's complement format.
+			// Device Class Defintion for Human Interface Devices
+			// (HID) Version 1.1, 5.8
+			if((e.inout->logical_minimum < 0 ||
+			                e.inout->logical_maximum < 0) &&
+			                (v & (m>>1)))
+				v -= m;//extend sign
 			values.push_back(v);
 		}
 		setValues(e.inout,values);
