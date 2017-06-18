@@ -114,6 +114,7 @@ MouseInput::MouseInput(input::Device *dev) : dev(dev) {
 	state.buttons = 0;
 	state.delta_axis[0] = 0;
 	state.delta_axis[1] = 0;
+	exclusive = false;
 }
 
 void MouseInput::inputReport( input::Report const &rep) {

@@ -183,6 +183,19 @@ void UI_keyDown(uint16_t /*keycode*/) {
 void UI_keyUp(uint16_t /*keycode*/) {
 }
 
+void UI_keyCountry(uint8_t country) {
+  key_country = country;
+}
+
+void UI_joyTrgDown(ui::JoyTrg trg) {
+}
+
+void UI_joyTrgUp(ui::JoyTrg trg) {
+}
+
+void UI_joyAxis(int8_t x, int8_t y) {
+}
+
 void UI_setTopLevelControl(ui::Control *control) {
   toplevel = control;
   if (current_keyfocus)
@@ -217,3 +230,5 @@ void UI_setTopLevelControl(ui::Control *control) {
   }
 }
 
+
+// kate: indent-width 2; indent-mode cstyle;

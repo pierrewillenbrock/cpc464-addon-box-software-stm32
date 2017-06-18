@@ -105,6 +105,10 @@ void UI_mouseUp(uint8_t button);
 void UI_mouseWheel(int8_t dz);
 void UI_keyDown(uint16_t keycode);
 void UI_keyUp(uint16_t keycode);
+void UI_keyCountry(uint8_t country);
+void UI_joyTrgDown(ui::JoyTrg trg);
+void UI_joyTrgUp(ui::JoyTrg trg);
+void UI_joyAxis(int8_t x, int8_t y);
 
 void UI_setTopLevelControl(ui::Control *control);
 
