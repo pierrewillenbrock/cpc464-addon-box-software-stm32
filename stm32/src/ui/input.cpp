@@ -3,6 +3,7 @@
 #include <timer.h>
 #include <fpga/font.h>
 #include <sstream>
+#include <cmath>
 
 using namespace ui;
 
@@ -12,10 +13,11 @@ Input::Input(Container *parent)
   , m_minValue(-0x7ffffff)
   , m_maxValue(0x7ffffff)
   , m_accel(0)
+  , m_joyChange(0)
   , m_scroll(0)
   , m_cursor(0)
-  , m_focused(false)
   , m_flags(0)
+  , m_focusMode(NotFocused)
 {}
 
 Input::Input()
@@ -24,10 +26,11 @@ Input::Input()
   , m_minValue(-0x7ffffff)
   , m_maxValue(0x7ffffff)
   , m_accel(0)
+  , m_joyChange(0)
   , m_scroll(0)
   , m_cursor(0)
-  , m_focused(false)
   , m_flags(0)
+  , m_focusMode(NotFocused)
 {}
 
 Input::~Input() {
@@ -87,15 +90,21 @@ void Input::redraw(bool no_parent_update) {
       c = m_text[i];
     else
       c = ' ';
-    if (m_focused && m_cursor == i)
+    if ((m_focusMode == Select && m_cursor == i) || m_focusMode == Navigate)
       map(i-m_scroll, 0) = font_get_tile(c, 15, 1);
     else
       map(i-m_scroll, 0) = font_get_tile(c, 11, 1);
   }
-  for(unsigned int i = m_text.size()+1-m_scroll; i < txt_width; i++)
-    map(i, 0) = font_get_tile(' ', 11, 1);
+  if (m_focusMode == Navigate) {
+    for(unsigned int i = m_text.size()+1-m_scroll; i < txt_width; i++)
+      map(i, 0) = font_get_tile(' ', 15, 1);
+  } else {
+    for(unsigned int i = m_text.size()+1-m_scroll; i < txt_width; i++)
+      map(i, 0) = font_get_tile(' ', 11, 1);
+  }
   if ((m_flags & Numeric) && m_updownicon) {
-    if ((m_pressed == Up || m_pressed == Down) && m_mouseOver)
+    if (((m_pressed == Up || m_pressed == Down) && m_mouseOver) ||
+      m_focusMode == Navigate)
       map(m_width-1, 0) = m_updownicon->sel_map;
     else
       map(m_width-1, 0) = m_updownicon->def_map;
@@ -133,8 +142,10 @@ void Input::mouseDown(uint8_t button, MouseState mousestate) {
 	m_pressed = Down;
       m_mouseOver = true;
       m_accel = 0;
-      doValueChange();
-      m_pressedTimer = Timer_Oneshot(500000, _pressedTimer, this);
+      if(!m_pressedTimer) {
+        doValueChange();
+        m_pressedTimer = Timer_Oneshot(500000, _pressedTimer, this);
+      }
     } else {
       //click in the remaining area: move input focus here and set the cursor
       //position. todo
@@ -145,25 +156,32 @@ void Input::mouseDown(uint8_t button, MouseState mousestate) {
 
 void Input::doValueChange()  {
   int nextv = m_value;
-  if (m_pressed == Up) {
-    nextv += 1 << (m_accel/8);
-    if (nextv > m_maxValue) {
-      if (m_flags & WrapAround) {
-	nextv = nextv - m_maxValue + m_minValue;
-      } else {
-	nextv = m_maxValue;
+  if (m_mouseOver) {
+    if(m_pressed == Up) {
+      nextv += 1 << (m_accel/8);
+      if(nextv > m_maxValue) {
+        if(m_flags & WrapAround) {
+          nextv = nextv - m_maxValue + m_minValue;
+        } else {
+          nextv = m_maxValue;
+        }
       }
     }
+    if(m_pressed == Down) {
+      nextv  -= 1 << (m_accel/8);
+      if(nextv < m_minValue) {
+        if(m_flags & WrapAround) {
+          nextv = nextv + m_maxValue - m_minValue;
+        } else {
+          nextv = m_minValue;
+        }
+      }
+    }
+  } else {
+    m_accel = 0;
   }
-  if (m_pressed == Down) {
-    nextv  -= 1 << (m_accel/8);
-    if (nextv < m_minValue) {
-      if (m_flags & WrapAround) {
-	nextv = nextv + m_maxValue - m_minValue;
-      } else {
-	nextv = m_minValue;
-      }
-    }
+  if(m_joyChange != 0) {
+    nextv += m_joyChange;
   }
   if (1 << (m_accel/8) < (m_maxValue - m_minValue) / 8)
     m_accel++;
@@ -177,12 +195,11 @@ void Input::doValueChange()  {
 
 void Input::pressedTimer() {
   ISR_Guard g;
-  m_pressedTimer = Timer_Oneshot(200000, _pressedTimer, this);
-  if (m_mouseOver) {
-    doValueChange();
-  } else {
-    m_accel = 0;
-  }
+  if (m_pressed != None || m_joyChange != 0)
+    m_pressedTimer = Timer_Oneshot(200000, _pressedTimer, this);
+  else
+    m_pressedTimer = 0;
+  doValueChange();
 }
 
 void Input::_pressedTimer(void *data) {
@@ -197,8 +214,6 @@ void Input::mouseUp(uint8_t button, MouseState mousestate) {
       mousestate.x >= r.x+r.width ||
       mousestate.y >= r.y+r.height) {
     if (button == 0 && mousestate.buttons == 0) {
-      ISR_Guard g;
-      Timer_Cancel(m_pressedTimer);
       m_pressed = None;
       redraw();
     }
@@ -206,8 +221,6 @@ void Input::mouseUp(uint8_t button, MouseState mousestate) {
   }
   if (button == 0 && mousestate.buttons == 0) {
     if (m_pressed) {
-      ISR_Guard g;
-      Timer_Cancel(m_pressedTimer);
       m_pressed = None;
       redraw();
     }
@@ -234,3 +247,85 @@ void Input::mouseMove(int16_t /*dx*/, int16_t /*dy*/, MouseState mousestate) {
   }
 }
 
+void Input::focusEnter() {
+  m_focusMode = Navigate;
+  redraw();
+}
+
+void Input::focusLeave() {
+  m_focusMode = NotFocused;
+  m_joyChange = 0;
+  redraw();
+}
+
+void Input::joyTrgDown(JoyTrg trg, JoyState state) {
+  if(m_focusMode == Navigate)
+    Control::joyTrgDown(trg, state);
+  else if (m_focusMode == Select) {
+    switch(trg) {
+    case JoyTrg::Left:
+      if(m_cursor > 0) {
+        m_cursor--;
+        redraw();
+      }
+      break;
+    case JoyTrg::Right:
+      if(m_cursor < m_text.size()) {
+        m_cursor++;
+        redraw();
+      }
+      break;
+    default:
+      break;
+    }
+  }
+}
+
+void Input::joyTrgUp(JoyTrg trg, JoyState state) {
+  switch(trg) {
+  case JoyTrg::Btn1:
+    //bring up/hide keyboard/numpad
+    break;
+  case JoyTrg::Btn2:
+    if (m_focusMode == Select)
+      m_focusMode = Navigate;
+    else if (m_focusMode == Navigate)
+      m_focusMode = Select;
+    redraw();
+   break;
+  default:
+    if (m_focusMode == Navigate)
+      Control::joyTrgUp(trg, state);
+    break;
+  }
+}
+
+void Input::joyAxis(JoyState state) {
+  if (m_focusMode == Select && (m_flags & Numeric)) {
+    if(state.y > 64) {
+      if (state.y < 128) {
+        float ch = powf(2,6-logf(128-state.y)/logf(2));
+        m_joyChange = -ch;
+      } else
+        m_joyChange = -64;
+      if(!m_pressedTimer) {
+        doValueChange();
+        m_pressedTimer = Timer_Oneshot(500000, _pressedTimer, this);
+      }
+    } else if(state.y < -64) {
+      if (state.y > -128) {
+        float ch = powf(2,6-logf(128+state.y)/logf(2));
+        m_joyChange = ch;
+      } else
+        m_joyChange = 64;
+      if(!m_pressedTimer) {
+        doValueChange();
+        m_pressedTimer = Timer_Oneshot(500000, _pressedTimer, this);
+      }
+    } else {
+      m_joyChange = 0;
+    }
+  }
+}
+
+// kate: indent-width 2; indent-mode cstyle; replace-tabs on;

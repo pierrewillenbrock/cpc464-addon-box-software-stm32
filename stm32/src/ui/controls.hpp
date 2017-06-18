@@ -66,49 +66,57 @@ public:
   virtual bool focusable() { return false; }
 };
 
-  class Panel : public Container, public SubControl {
-  public:
-    Panel(Container *parent);
-    Panel();
-    ~Panel();
-    //in tile position, relative to the parent
-    virtual void fullRedraw();
-    virtual void updatedMap();
-    virtual void redraw(bool no_parent_update = false);
-    virtual void unmapped();
-    virtual void mapped();
-    virtual void setVisible(bool visible);
-    virtual bool isMapped() { return m_parent->isMapped() && m_visible; }
-  };
+class Panel : public Container, public SubControl {
+public:
+  Panel(Container *parent);
+  Panel();
+  ~Panel();
+  //in tile position, relative to the parent
+  virtual void fullRedraw();
+  virtual void updatedMap();
+  virtual void redraw(bool no_parent_update = false);
+  virtual void unmapped();
+  virtual void mapped();
+  virtual void setVisible(bool visible);
+  virtual bool isMapped() { return m_parent->isMapped() && m_visible; }
+  virtual Control *getNextControl(Direction dir, Control *refctl,
+                                  Point &refpt);
+};
 
-  class Button : public SubControl {
-  private:
-    std::string m_text;
-    RefPtr<Icon const> m_icon;
-    bool m_pressed;
-    sigc::signal<void> m_onClick;
-  public:
-    Button(Container *parent);
-    Button();
-    ~Button();
-    void setText(std::string const &text);
-    void setIcon(RefPtr<Icon const> const &icon);
-    virtual void redraw(bool no_parent_update = false);
-    virtual void mouseDown(uint8_t button, MouseState mousestate);
-    virtual void mouseUp(uint8_t button, MouseState mousestate);
-    sigc::signal<void> &onClick() { return m_onClick; }
-  };
+class Button : public SubControl {
+private:
+  std::string m_text;
+  RefPtr<Icon const> m_icon;
+  bool m_pressed;
+  bool m_focused;
+  sigc::signal<void> m_onClick;
+public:
+  Button(Container *parent);
+  Button();
+  ~Button();
+  void setText(std::string const &text);
+  void setIcon(RefPtr<Icon const> const &icon);
+  virtual void redraw(bool no_parent_update = false);
+  virtual void mouseDown(uint8_t button, MouseState mousestate);
+  virtual void mouseUp(uint8_t button, MouseState mousestate);
+  virtual void joyTrgDown(ui::JoyTrg trg, ui::JoyState state);
+  virtual void joyTrgUp(ui::JoyTrg trg, ui::JoyState state);
+  virtual void focusEnter();
+  virtual void focusLeave();
+  sigc::signal<void> &onClick() { return m_onClick; }
+  virtual bool focusable() { return true; }
+};
 
-  class Label : public SubControl {
-  private:
-    std::string m_text;
-  public:
-    Label(Container *parent);
-    Label();
-    ~Label();
-    void setText(std::string const &text);
-    virtual void redraw(bool no_parent_update = false);
-  };
+class Label : public SubControl {
+private:
+  std::string m_text;
+public:
+  Label(Container *parent);
+  Label();
+  ~Label();
+  void setText(std::string const &text);
+  virtual void redraw(bool no_parent_update = false);
+};
 
 }
 

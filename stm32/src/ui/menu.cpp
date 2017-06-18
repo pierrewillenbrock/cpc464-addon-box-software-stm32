@@ -10,7 +10,7 @@ Menu::Menu() {
   m_sprite.setPriority(30);
   m_sprite.setZOrder(40);
   m_sprite.setDoubleSize(false);
-  mouse_over_item = -1;
+  highlight_item = -1;
 }
 
 Menu::~Menu() {
@@ -36,7 +36,7 @@ void Menu::generateMap() {
   m_sprite.setSize(w,h);
   for(unsigned i = 0; i < h; i++) {
     unsigned int pal = 15;
-    if ((int)i == mouse_over_item) {
+    if ((int)i == highlight_item) {
       pal = 11;
     }
     std::string text = getItemText(i);
@@ -79,11 +79,11 @@ void Menu::mouseDown(uint8_t button, MouseState mousestate) {
       mousestate.x >= r.x+r.width ||
       mousestate.y >= r.y+r.height) {
     if (button == 0 && mousestate.buttons == 1)
-      pressed_item = -1;
+      mouse_pressed_item = -1;
     return;
   }
   if (button == 0 && mousestate.buttons == 1)
-    pressed_item = (mousestate.y - r.y)/8;
+    mouse_pressed_item = (mousestate.y - r.y)/8;
 }
 
 void Menu::mouseUp(uint8_t button, MouseState mousestate) {
@@ -93,14 +93,14 @@ void Menu::mouseUp(uint8_t button, MouseState mousestate) {
       mousestate.x >= r.x+r.width ||
       mousestate.y >= r.y+r.height) {
     if (button == 0 && mousestate.buttons == 0) {
-      if (pressed_item == -1)
+      if (mouse_pressed_item == -1)
 	selectItem(-1);
     }
     return;
   }
   if (button == 0 && mousestate.buttons == 0) {
     int itemno = (mousestate.y - r.y)/8;
-    if (itemno == pressed_item) {
+    if (itemno == mouse_pressed_item) {
       selectItem(itemno);
     }
   }
@@ -113,16 +113,52 @@ void Menu::mouseMove(int16_t /*dx*/, int16_t /*dy*/, MouseState mousestate) {
       mousestate.x >= r.x+r.width ||
       mousestate.y >= r.y+r.height ||
       mousestate.buttons) {
-    if (mouse_over_item != -1) {
-      mouse_over_item = -1;
+    if (highlight_item != -1) {
+      highlight_item = -1;
       generateMap();
     }
     return;
   }
   int itemno = (mousestate.y - r.y)/8;
-  if (itemno != mouse_over_item) {
-    mouse_over_item = itemno;
+  if (itemno != highlight_item) {
+    highlight_item = itemno;
     generateMap();
+  }
+}
+
+void Menu::joyTrgDown(ui::JoyTrg trg, ui::JoyState /*state*/) {
+  switch(trg) {
+  case ui::JoyTrg::Down:
+    if (highlight_item == -1 ||
+      (unsigned)highlight_item == getItemCount()-1)
+      highlight_item = 0;
+    else
+      highlight_item++;
+    generateMap();
+    break;
+  case ui::JoyTrg::Up:
+    if (highlight_item == -1 ||
+      highlight_item == 0)
+      highlight_item = getItemCount()-1;
+    else
+      highlight_item--;
+    generateMap();
+    break;
+  default:
+    break;
+  }
+}
+
+void Menu::joyTrgUp(ui::JoyTrg trg, ui::JoyState /*state*/) {
+  switch(trg) {
+  case ui::JoyTrg::Btn1:
+    selectItem(highlight_item);
+    break;
+  case ui::JoyTrg::Btn2:
+    selectItem(-1);
+    break;
+  default:
+    break;
   }
 }
 

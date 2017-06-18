@@ -10,6 +10,8 @@ Button::Button(Container *parent)
 
 Button::Button()
   : SubControl()
+  , m_pressed(false)
+  , m_focused(false)
 {}
 
 Button::~Button() {
@@ -29,14 +31,14 @@ void Button::redraw(bool no_parent_update) {
   if (!m_visible)
     return;
   assert(m_parent);
-  uint8_t pal = m_pressed?11:15;
+  uint8_t pal = (m_pressed || m_focused)?11:15;
   map(0, 0) = font_get_tile('[',pal, 1);
   map(m_width-1, 0) = font_get_tile(']',pal, 1);
   if ((int)m_text.size()+(m_icon?1:0) <= m_width-2) {
     //center it
     unsigned int ofs = (m_width-2-m_text.size()+(m_icon?1:0))/2;
     if (m_icon) {
-      if (m_pressed)
+      if (m_pressed || m_focused)
 	map(ofs,0) = m_icon->def_map;
       else
 	map(ofs,0) = m_icon->sel_map;
@@ -51,7 +53,7 @@ void Button::redraw(bool no_parent_update) {
   } else {
     if (m_icon) {
       //abbrev... it
-      if (m_pressed)
+      if (m_pressed || m_focused)
 	map(1,0) = m_icon->sel_map;
       else
 	map(1,0) = m_icon->def_map;
@@ -109,6 +111,28 @@ void Button::mouseUp(uint8_t button, MouseState mousestate) {
       m_onClick();
     }
   }
+}
+
+void Button::joyTrgDown(ui::JoyTrg trg, ui::JoyState state) {
+  if (trg != ui::JoyTrg::Btn1)
+    Control::joyTrgDown(trg,state);
+}
+
+void Button::joyTrgUp(ui::JoyTrg trg, ui::JoyState state) {
+  if (trg == ui::JoyTrg::Btn1)
+    m_onClick();
+  else
+    Control::joyTrgUp(trg,state);
+}
+
+void Button::focusEnter() {
+  m_focused = true;
+  redraw();
+}
+
+void Button::focusLeave() {
+  m_focused = false;
+  redraw();
 }
 
 // kate: indent-width 2; indent-mode cstyle;

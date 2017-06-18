@@ -65,3 +65,18 @@ void Panel::setVisible(bool visible) {
     }
   }
 }
+
+Control *Panel::getNextControl(Direction dir, Control *refctl,
+                                  Point &refpt) {
+  Control *next = Container::getNextControl(dir, refctl, refpt);
+  if (next)
+    return next;
+  if (m_parent) { // okay, reached the end of the control. ask the parent.
+    //we could use SubControl::getNextControl(dir, this, refpt), but that does
+    //exactly the same.
+    return m_parent->getNextControl(dir, this, refpt);
+  }
+  return NULL;
+}
+
+// kate: indent-width 2; indent-mode cstyle; replace-tabs on;

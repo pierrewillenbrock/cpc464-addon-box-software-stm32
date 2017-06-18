@@ -14,8 +14,8 @@ namespace ui {
     bool m_visible;
     Point m_position;
     MappedSprite m_sprite;
-    int mouse_over_item;
-    int pressed_item;
+    int highlight_item;
+    int mouse_pressed_item;
     //also updates sprites hsize/vsize
     void generateMap();
   protected:
@@ -37,6 +37,8 @@ namespace ui {
     virtual void mouseDown(uint8_t button, MouseState mousestate);
     virtual void mouseUp(uint8_t button, MouseState mousestate);
     virtual void mouseMove(int16_t /*dx*/, int16_t /*dy*/, MouseState mousestate);
+    virtual void joyTrgDown(ui::JoyTrg trg, ui::JoyState state);
+    virtual void joyTrgUp(ui::JoyTrg trg, ui::JoyState state);
     virtual unsigned int getItemCount() = 0;
     virtual std::string getItemText(unsigned int index) = 0;
     virtual void selectItem(int index) = 0;
