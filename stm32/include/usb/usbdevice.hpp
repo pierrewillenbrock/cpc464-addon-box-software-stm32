@@ -66,27 +66,22 @@ namespace usb {
 			FetchManuString, FetchProdString, FetchConfigurations,
 			Unconfigured, Configuring, ConfiguringInterfaces,
 			Configured } state;
-			USBDescriptorDevice deviceDescriptor;
-			std::string m_manufacturer;
-			std::string m_product;
-			std::vector<uint8_t> descriptordata;
-			struct USBDeviceURB {
-				Device *_this;
-				URB u;
-			};
-			USBDeviceURB urb;
-			std::vector<Configuration> configurations;
-			Configuration *rconfiguration; ///< selected configuration
-			Configuration *econfiguration; ///< effective configuration
-			DriverDevice *claimed;
+		USBDescriptorDevice deviceDescriptor;
+		std::string m_manufacturer;
+		std::string m_product;
+		std::vector<uint8_t> descriptordata;
+		URB urb;
+		std::vector<Configuration> configurations;
+		Configuration *rconfiguration; ///< selected configuration
+		Configuration *econfiguration; ///< effective configuration
+		DriverDevice *claimed;
 
-			void urbCompletion(int result, URB *u);
-			static void _urbCompletion(int result, URB *u);
-			void prepareStringFetch(uint8_t id);
-			void prepareConfigurationFetch(uint8_t id);
+		void urbCompletion(int result, URB *u);
+		void prepareStringFetch(uint8_t id);
+		void prepareConfigurationFetch(uint8_t id);
 
-			void configureInterfaces();
-			void updateEndpoints(Interface &intf);
+		void configureInterfaces();
+		void updateEndpoints(Interface &intf);
 	public:
 		Device (Speed speed);
 		~Device();

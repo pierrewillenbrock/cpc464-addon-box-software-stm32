@@ -6,16 +6,6 @@
    \todo there are still initialisation troubles when devices are plugged into
    the port at startup, or when devices are plugged into the hub while it is
    getting plugged. need reproduction steps for all of the above.
-   \todo at some point between the usb subsystem and the ui, we should send data
-   through a deferred work. Candidates:
-   -> UI_* actions
-   -> input reports
-   -> URB completions
-
-   best for USB would be URB completions, but only if we can live with handling
-   URBs late(as in, many frames late). At the moment, this seems to be true.
-   IRQ completions will queue if the deferred work queue stalls, but that should
-   not create problems.
  */
 
 #include <usb/usb.hpp>

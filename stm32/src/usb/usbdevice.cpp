@@ -115,26 +115,26 @@ usb::Device::Configuration::Configuration(std::vector<uint8_t> const &descriptor
 
 void usb::Device::prepareStringFetch(uint8_t id) {
 
-	urb.u.setup.bmRequestType = 0x80;
-	urb.u.setup.bRequest = 6;
-	urb.u.setup.wValue = (3 << 8) | id;//STRING descriptor type, index id
-	urb.u.setup.wIndex = 0x409;//the right thing to do is to pull id 0, take any langid we like, then default to 0x409. but windows pretty much requires to have 0x409 in first position there, so we could go for that exclusively as well.
-	urb.u.setup.wLength = 7; //for now, just pull 7. there is enough info in there to determine the size.
+	urb.setup.bmRequestType = 0x80;
+	urb.setup.bRequest = 6;
+	urb.setup.wValue = (3 << 8) | id;//STRING descriptor type, index id
+	urb.setup.wIndex = 0x409;//the right thing to do is to pull id 0, take any langid we like, then default to 0x409. but windows pretty much requires to have 0x409 in first position there, so we could go for that exclusively as well.
+	urb.setup.wLength = 7; //for now, just pull 7. there is enough info in there to determine the size.
 	descriptordata.resize(7);
-	urb.u.buffer = descriptordata.data();
-	urb.u.buffer_len = descriptordata.size();
+	urb.buffer = descriptordata.data();
+	urb.buffer_len = descriptordata.size();
 }
 
 void usb::Device::prepareConfigurationFetch(uint8_t id) {
 
-	urb.u.setup.bmRequestType = 0x80;
-	urb.u.setup.bRequest = 6;
-	urb.u.setup.wValue = (2 << 8) | id;//CONFIGURATION descriptor type, index id
-	urb.u.setup.wIndex = 0;
-	urb.u.setup.wLength = 7; //for now, just pull 7. there is enough info in there to determine the size.
+	urb.setup.bmRequestType = 0x80;
+	urb.setup.bRequest = 6;
+	urb.setup.wValue = (2 << 8) | id;//CONFIGURATION descriptor type, index id
+	urb.setup.wIndex = 0;
+	urb.setup.wLength = 7; //for now, just pull 7. there is enough info in there to determine the size.
 	descriptordata.resize(7);
-	urb.u.buffer = descriptordata.data();
-	urb.u.buffer_len = descriptordata.size();
+	urb.buffer = descriptordata.data();
+	urb.buffer_len = descriptordata.size();
 }
 
 void usb::Device::urbCompletion(int result, URB *u) {
@@ -195,13 +195,13 @@ void usb::Device::urbCompletion(int result, URB *u) {
 		endpoints[0]->max_packet_length = d->bMaxPacketSize0;
 
 		if (u->buffer_received < d->bLength) {
-			urb.u.setup.wLength = d->bLength;
+			urb.setup.wLength = d->bLength;
 			descriptordata.resize(d->bLength);
-			urb.u.buffer = descriptordata.data();
-			urb.u.buffer_len = descriptordata.size();
+			urb.buffer = descriptordata.data();
+			urb.buffer_len = descriptordata.size();
 
 			state = DescDevice;
-			usb::submitURB(&urb.u);
+			usb::submitURB(&urb);
 			break;
 		} else {
 			//we have all the data needed
@@ -217,20 +217,20 @@ void usb::Device::urbCompletion(int result, URB *u) {
 		if (deviceDescriptor.iManufacturer) {
 			prepareStringFetch(deviceDescriptor.iManufacturer);
 			state = FetchManuString;
-			usb::submitURB(&urb.u);
+			usb::submitURB(&urb);
 		} else if (deviceDescriptor.iProduct) {
 			prepareStringFetch(deviceDescriptor.iProduct);
 			state = FetchProdString;
-			usb::submitURB(&urb.u);
+			usb::submitURB(&urb);
 		} else if (deviceDescriptor.bNumConfigurations > 0) {
 		        prepareConfigurationFetch(configurations.size());
 			state = FetchConfigurations;
-			usb::submitURB(&urb.u);
+			usb::submitURB(&urb);
 		} else {
 			state = Unconfigured;
 			descriptordata.clear();
 			descriptordata.shrink_to_fit();
-			urb.u.endpoint = NULL;
+			urb.endpoint = NULL;
 			usb::registerDevice(this);
 		}
 		break;
@@ -240,11 +240,11 @@ void usb::Device::urbCompletion(int result, URB *u) {
 			descriptordata.data();
 		assert(isRWPtr(d));
 		if (d->bLength > descriptordata.size()) {
-			urb.u.setup.wLength = d->bLength;
+			urb.setup.wLength = d->bLength;
 			descriptordata.resize(d->bLength);
-			urb.u.buffer = descriptordata.data();
-			urb.u.buffer_len = descriptordata.size();
-			usb::submitURB(&urb.u);
+			urb.buffer = descriptordata.data();
+			urb.buffer_len = descriptordata.size();
+			usb::submitURB(&urb);
 			break;
 		}
 
@@ -255,16 +255,16 @@ void usb::Device::urbCompletion(int result, URB *u) {
 		if (deviceDescriptor.iProduct) {
 			prepareStringFetch(deviceDescriptor.iProduct);
 			state = FetchProdString;
-			usb::submitURB(&urb.u);
+			usb::submitURB(&urb);
 		} else if (deviceDescriptor.bNumConfigurations > configurations.size()) {
 		        prepareConfigurationFetch(configurations.size());
 			state = FetchConfigurations;
-			usb::submitURB(&urb.u);
+			usb::submitURB(&urb);
 		} else {
 			state = Unconfigured;
 			descriptordata.clear();
 			descriptordata.shrink_to_fit();
-			urb.u.endpoint = NULL;
+			urb.endpoint = NULL;
 			usb::registerDevice(this);
 		}
 		break;
@@ -275,11 +275,11 @@ void usb::Device::urbCompletion(int result, URB *u) {
 			descriptordata.data();
 		assert(isRWPtr(d));
 		if (d->bLength > descriptordata.size()) {
-			urb.u.setup.wLength = d->bLength;
+			urb.setup.wLength = d->bLength;
 			descriptordata.resize(d->bLength);
-			urb.u.buffer = descriptordata.data();
-			urb.u.buffer_len = descriptordata.size();
-			usb::submitURB(&urb.u);
+			urb.buffer = descriptordata.data();
+			urb.buffer_len = descriptordata.size();
+			usb::submitURB(&urb);
 			break;
 		}
 
@@ -290,12 +290,12 @@ void usb::Device::urbCompletion(int result, URB *u) {
 		if (deviceDescriptor.bNumConfigurations > configurations.size()) {
 		        prepareConfigurationFetch(configurations.size());
 			state = FetchConfigurations;
-			usb::submitURB(&urb.u);
+			usb::submitURB(&urb);
 		} else {
 			state = Unconfigured;
 			descriptordata.clear();
 			descriptordata.shrink_to_fit();
-			urb.u.endpoint = NULL;
+			urb.endpoint = NULL;
 			usb::registerDevice(this);
 		}
 		break;
@@ -306,11 +306,11 @@ void usb::Device::urbCompletion(int result, URB *u) {
 			descriptordata.data();
 		assert(isRWPtr(d));
 		if (d->wTotalLength > descriptordata.size()) {
-			urb.u.setup.wLength = d->wTotalLength;
+			urb.setup.wLength = d->wTotalLength;
 			descriptordata.resize(d->wTotalLength);
-			urb.u.buffer = descriptordata.data();
-			urb.u.buffer_len = descriptordata.size();
-			usb::submitURB(&urb.u);
+			urb.buffer = descriptordata.data();
+			urb.buffer_len = descriptordata.size();
+			usb::submitURB(&urb);
 			break;
 		}
 
@@ -319,12 +319,12 @@ void usb::Device::urbCompletion(int result, URB *u) {
 		if (deviceDescriptor.bNumConfigurations > configurations.size()) {
 		        prepareConfigurationFetch(configurations.size());
 			state = FetchConfigurations;
-			usb::submitURB(&urb.u);
+			usb::submitURB(&urb);
 		} else {
 			state = Unconfigured;
 			descriptordata.clear();
 			descriptordata.shrink_to_fit();
-			urb.u.endpoint = NULL;
+			urb.endpoint = NULL;
 			usb::registerDevice(this);
 		}
 		break;
@@ -349,7 +349,7 @@ void usb::Device::urbCompletion(int result, URB *u) {
 
 		if (claimed)
 			claimed->deviceClaimed();
-		urb.u.endpoint = NULL;
+		urb.endpoint = NULL;
 		ISR_Guard g;
 		state = Configured;
 		configureInterfaces();
@@ -357,7 +357,7 @@ void usb::Device::urbCompletion(int result, URB *u) {
 	}
 	case ConfiguringInterfaces: {
 		LogEvent("USBDevice: ConfiguringInterfaces");
-		urb.u.endpoint = NULL;
+		urb.endpoint = NULL;
 		ISR_Guard g;
 
 		assert(isRWPtr(econfiguration));
@@ -386,13 +386,6 @@ void usb::Device::urbCompletion(int result, URB *u) {
 	}
 }
 
-void usb::Device::_urbCompletion(int result, URB *u) {
-	USBDeviceURB *du = container_of(u, USBDeviceURB, u);
-	assert(isRWPtr(du));
-	assert(isRWPtr(du->_this));
-	du->_this->urbCompletion(result, u);
-}
-
 void usb::Device::activate() {
 	//device now is in "Default" state.
 	//give it an address.
@@ -400,18 +393,17 @@ void usb::Device::activate() {
 	raddress = usb::getNextAddress();
 	eaddress = 0; //default address
 	state = Address;
-	urb._this = this;
-	urb.u.endpoint = endpoints[0];
-	urb.u.setup.bmRequestType = 0x00;
-	urb.u.setup.bRequest = 5;//SET ADDRESS
-	urb.u.setup.wValue = raddress;
-	urb.u.setup.wIndex = 0;
-	urb.u.setup.wLength = 0;
-	urb.u.buffer = NULL;
-	urb.u.buffer_len = 0;
-	urb.u.completion = _urbCompletion;
+	urb.endpoint = endpoints[0];
+	urb.setup.bmRequestType = 0x00;
+	urb.setup.bRequest = 5;//SET ADDRESS
+	urb.setup.wValue = raddress;
+	urb.setup.wIndex = 0;
+	urb.setup.wLength = 0;
+	urb.buffer = NULL;
+	urb.buffer_len = 0;
+	urb.slot = sigc::mem_fun(this, &Device::urbCompletion);
 
-	usb::submitURB(&urb.u);
+	usb::submitURB(&urb);
 }
 
 void usb::Device::disconnected() {
@@ -473,17 +465,17 @@ void usb::Device::selectConfiguration(uint8_t bConfigurationValue) {
 		return;
 	state = Configuring;
 
-	urb.u.endpoint = endpoints[0];
-	urb.u.setup.bmRequestType = 0x00;
-	urb.u.setup.bRequest = 9;//SET CONFIGURATION
-	urb.u.setup.wValue = bConfigurationValue;
-	urb.u.setup.wIndex = 0;
-	urb.u.setup.wLength = 0;
-	urb.u.buffer = NULL;
-	urb.u.buffer_len = 0;
-	urb.u.completion = _urbCompletion;
+	urb.endpoint = endpoints[0];
+	urb.setup.bmRequestType = 0x00;
+	urb.setup.bRequest = 9;//SET CONFIGURATION
+	urb.setup.wValue = bConfigurationValue;
+	urb.setup.wIndex = 0;
+	urb.setup.wLength = 0;
+	urb.buffer = NULL;
+	urb.buffer_len = 0;
+	urb.slot = sigc::mem_fun(this, &Device::urbCompletion);
 
-	usb::submitURB(&urb.u);
+	usb::submitURB(&urb);
 }
 
 void usb::Device::configureInterfaces() {
@@ -497,17 +489,17 @@ void usb::Device::configureInterfaces() {
 			if (intf.alternateSettings.size() > 1) {
 				state = ConfiguringInterfaces;
 
-				urb.u.endpoint = endpoints[0];
-				urb.u.setup.bmRequestType = 0x01;
-				urb.u.setup.bRequest = 11;//SET INTERFACE
-				urb.u.setup.wValue = intf.rAlternateSetting;
-				urb.u.setup.wIndex = intf.interfaceNumber;
-				urb.u.setup.wLength = 0;
-				urb.u.buffer = NULL;
-				urb.u.buffer_len = 0;
-				urb.u.completion = _urbCompletion;
+				urb.endpoint = endpoints[0];
+				urb.setup.bmRequestType = 0x01;
+				urb.setup.bRequest = 11;//SET INTERFACE
+				urb.setup.wValue = intf.rAlternateSetting;
+				urb.setup.wIndex = intf.interfaceNumber;
+				urb.setup.wLength = 0;
+				urb.buffer = NULL;
+				urb.buffer_len = 0;
+				urb.slot = sigc::mem_fun(this, &Device::urbCompletion);
 
-				usb::submitURB(&urb.u);
+				usb::submitURB(&urb);
 				return;
 			} else {
 				intf.eAlternateSetting =

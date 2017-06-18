@@ -50,10 +50,7 @@ private:
 	       PortInitFetchStatus, Disconnected
 	} state;
 
-	struct USBHUBDeviceURB {
-		USBHUBDev *_this;
-		usb::URB u;
-	} irqurb, ctlurb;
+	usb::URB irqurb, ctlurb;
 	std::vector<uint8_t> ctldata;
 	std::vector<uint8_t> irqdata;
 	uint8_t input_endpoint;
@@ -63,9 +60,7 @@ private:
 	uint16_t hubStatus;
 	uint8_t activatingPort;
 	void ctlurbCompletion(int result, usb::URB *u);
-	static void _ctlurbCompletion(int result, usb::URB *u);
 	void irqurbCompletion(int result, usb::URB */*u*/);
-	static void _irqurbCompletion(int result, usb::URB *u);
 
 	void checkStatus();
 public:
@@ -126,10 +121,10 @@ void USBHUBDev::ctlurbCompletion(int result, usb::URB *u) {
 		USBDescriptorHUB *d = (USBDescriptorHUB*)ctldata.data();
 		if (u->buffer_received < d->bLength) {
 			//reissue with the correct length.
-			ctlurb.u.setup.wLength = d->bLength;
+			ctlurb.setup.wLength = d->bLength;
 			ctldata.resize(d->bLength);
-			ctlurb.u.buffer = ctldata.data();
-			ctlurb.u.buffer_len = ctldata.size();
+			ctlurb.buffer = ctldata.data();
+			ctlurb.buffer_len = ctldata.size();
 			usb::submitURB(u);
 			return;
 		}
@@ -144,16 +139,15 @@ void USBHUBDev::ctlurbCompletion(int result, usb::URB *u) {
 		}
 
 		//setup the URB
-		irqurb._this = this;
-		irqurb.u.endpoint = device->getEndpoint(input_endpoint);
-		assert(irqurb.u.endpoint);
+		irqurb.endpoint = device->getEndpoint(input_endpoint);
+		assert(irqurb.endpoint);
 		irqdata.resize((d->bNbrPorts+1+7) >> 3);
-		irqurb.u.pollingInterval = input_polling_interval;
-		irqurb.u.buffer = irqdata.data();
-		irqurb.u.buffer_len = irqdata.size();
-		irqurb.u.completion = _irqurbCompletion;
+		irqurb.pollingInterval = input_polling_interval;
+		irqurb.buffer = irqdata.data();
+		irqurb.buffer_len = irqdata.size();
+		irqurb.slot = sigc::mem_fun(this, &USBHUBDev::irqurbCompletion);
 
-		usb::submitURB(&irqurb.u);
+		usb::submitURB(&irqurb);
 
 		needsHubStatusCheck = true;
 		state = Configured;
@@ -232,11 +226,6 @@ void USBHUBDev::ctlurbCompletion(int result, usb::URB *u) {
 	}
 }
 
-void USBHUBDev::_ctlurbCompletion(int result, usb::URB *u) {
-	USBHUBDeviceURB *du = container_of(u, USBHUBDeviceURB, u);
-	du->_this->ctlurbCompletion(result, u);
-}
-
 void USBHUBDev::irqurbCompletion(int result, usb::URB */*u*/) {
 	//this is called repeatedly by the usb subsystem.
 	if (result != 0)
@@ -248,11 +237,6 @@ void USBHUBDev::irqurbCompletion(int result, usb::URB */*u*/) {
 			ports[i-1].flags |= Port::NeedsCheck;
 	}
 	checkStatus();
-}
-
-void USBHUBDev::_irqurbCompletion(int result, usb::URB *u) {
-	USBHUBDeviceURB *du = container_of(u, USBHUBDeviceURB, u);
-	du->_this->irqurbCompletion(result, u);
 }
 
 void USBHUBDev::deviceClaimed() {
@@ -272,27 +256,26 @@ void USBHUBDev::deviceClaimed() {
 
 	state = FetchHUBDescriptor;
 	activatingPort = 0xff;
-	ctlurb._this = this;
-	ctlurb.u.endpoint = device->getEndpoint(0);
-	ctlurb.u.setup.bmRequestType = 0xa0;
-	ctlurb.u.setup.bRequest = 6;//GET DESCRIPTOR
-	ctlurb.u.setup.wValue = (0x29 << 8);
-	ctlurb.u.setup.wIndex = 0;
-	ctlurb.u.setup.wLength = 7;//go with 7, then reissue if not big enough.
+	ctlurb.endpoint = device->getEndpoint(0);
+	ctlurb.setup.bmRequestType = 0xa0;
+	ctlurb.setup.bRequest = 6;//GET DESCRIPTOR
+	ctlurb.setup.wValue = (0x29 << 8);
+	ctlurb.setup.wIndex = 0;
+	ctlurb.setup.wLength = 7;//go with 7, then reissue if not big enough.
 	ctldata.resize(7);
-	ctlurb.u.buffer = ctldata.data();
-	ctlurb.u.buffer_len = ctldata.size();
-	ctlurb.u.completion = _ctlurbCompletion;
+	ctlurb.buffer = ctldata.data();
+	ctlurb.buffer_len = ctldata.size();
+	ctlurb.slot = sigc::mem_fun(this, &USBHUBDev::ctlurbCompletion);
 
-	usb::submitURB(&ctlurb.u);
+	usb::submitURB(&ctlurb);
 }
 
 void USBHUBDev::disconnected(RefPtr<usb::Device> /*device*/) {
 	state = Disconnected;
-	usb::retireURB(&ctlurb.u);
-	ctlurb.u.endpoint = NULL;
-	usb::retireURB(&irqurb.u);
-	irqurb.u.endpoint = NULL;
+	usb::retireURB(&ctlurb);
+	ctlurb.endpoint = NULL;
+	usb::retireURB(&irqurb);
+	irqurb.endpoint = NULL;
 	for(auto &p : ports) {
 		if (p.device) {
 			p.device->disconnected();
@@ -308,38 +291,38 @@ void USBHUBDev::checkStatus() {
 	if (needsHubStatusCheck) {
 		state = CheckingHubStatus;
 
-		ctlurb.u.setup.bmRequestType = 0xa0;
-		ctlurb.u.setup.bRequest = 0;//GET STATUS
-		ctlurb.u.setup.wValue = 0;
-		ctlurb.u.setup.wIndex = 0;
-		ctlurb.u.setup.wLength = 4;
+		ctlurb.setup.bmRequestType = 0xa0;
+		ctlurb.setup.bRequest = 0;//GET STATUS
+		ctlurb.setup.wValue = 0;
+		ctlurb.setup.wIndex = 0;
+		ctlurb.setup.wLength = 4;
 		ctldata.resize(4);
-		ctlurb.u.buffer = ctldata.data();
-		ctlurb.u.buffer_len = ctldata.size();
-		ctlurb.u.completion = _ctlurbCompletion;
+		ctlurb.buffer = ctldata.data();
+		ctlurb.buffer_len = ctldata.size();
+		ctlurb.slot = sigc::mem_fun(this, &USBHUBDev::ctlurbCompletion);
 
 		needsHubStatusCheck = false;
 
-		usb::submitURB(&ctlurb.u);
+		usb::submitURB(&ctlurb);
 		return;
 	}
 	for(unsigned int i = 0; i < ports.size(); i++) {
 		if (ports[i].flags & Port::NeedsCheck) {
 			state = CheckingPortStatus;
 
-			ctlurb.u.setup.bmRequestType = 0xa3;
-			ctlurb.u.setup.bRequest = 0;//GET STATUS
-			ctlurb.u.setup.wValue = 0;
-			ctlurb.u.setup.wIndex = i+1;
-			ctlurb.u.setup.wLength = 4;
+			ctlurb.setup.bmRequestType = 0xa3;
+			ctlurb.setup.bRequest = 0;//GET STATUS
+			ctlurb.setup.wValue = 0;
+			ctlurb.setup.wIndex = i+1;
+			ctlurb.setup.wLength = 4;
 			ctldata.resize(4);
-			ctlurb.u.buffer = ctldata.data();
-			ctlurb.u.buffer_len = ctldata.size();
-			ctlurb.u.completion = _ctlurbCompletion;
+			ctlurb.buffer = ctldata.data();
+			ctlurb.buffer_len = ctldata.size();
+			ctlurb.slot = sigc::mem_fun(this, &USBHUBDev::ctlurbCompletion);
 
 			ports[i].flags &= ~Port::NeedsCheck;
 
-			usb::submitURB(&ctlurb.u);
+			usb::submitURB(&ctlurb);
 
 			return;
 		}
@@ -353,15 +336,15 @@ void USBHUBDev::checkStatus() {
 			activatingPort = i;
 			ports[i].flags &= ~Port::NeedsReset;
 
-			ctlurb.u.setup.bmRequestType = 0x23;
-			ctlurb.u.setup.bRequest = USB_REQUEST_SET_FEATURE;
-			ctlurb.u.setup.wValue = USBHUB_FEATURE_PORT_RESET;
-			ctlurb.u.setup.wIndex = i+1;
-			ctlurb.u.setup.wLength = 0;
-			ctlurb.u.buffer = NULL;
-			ctlurb.u.buffer_len = 0;
+			ctlurb.setup.bmRequestType = 0x23;
+			ctlurb.setup.bRequest = USB_REQUEST_SET_FEATURE;
+			ctlurb.setup.wValue = USBHUB_FEATURE_PORT_RESET;
+			ctlurb.setup.wIndex = i+1;
+			ctlurb.setup.wLength = 0;
+			ctlurb.buffer = NULL;
+			ctlurb.buffer_len = 0;
 
-			usb::submitURB(&ctlurb.u);
+			usb::submitURB(&ctlurb);
 			return;
 		}
 		//check if the port is powered. if not, we need to do that.
@@ -372,15 +355,15 @@ void USBHUBDev::checkStatus() {
 			state = PoweringPort;
 			ports[i].flags |= Port::Powered;
 
-			ctlurb.u.setup.bmRequestType = 0x23;
-			ctlurb.u.setup.bRequest = USB_REQUEST_SET_FEATURE;
-			ctlurb.u.setup.wValue = USBHUB_FEATURE_PORT_POWER;
-			ctlurb.u.setup.wIndex = i+1;
-			ctlurb.u.setup.wLength = 0;
-			ctlurb.u.buffer = NULL;
-			ctlurb.u.buffer_len = 0;
+			ctlurb.setup.bmRequestType = 0x23;
+			ctlurb.setup.bRequest = USB_REQUEST_SET_FEATURE;
+			ctlurb.setup.wValue = USBHUB_FEATURE_PORT_POWER;
+			ctlurb.setup.wIndex = i+1;
+			ctlurb.setup.wLength = 0;
+			ctlurb.buffer = NULL;
+			ctlurb.buffer_len = 0;
 
-			usb::submitURB(&ctlurb.u);
+			usb::submitURB(&ctlurb);
 			return;
 		}
 		//if there are any .change bits, need to at least acknowledge
@@ -406,15 +389,15 @@ void USBHUBDev::checkStatus() {
 			ports[i].change &= ~USBHUB_PORT_STATUS_C_PORT_CONNECTION;
 
 			state = ChangeAck;
-			ctlurb.u.setup.bmRequestType = 0x23;
-			ctlurb.u.setup.bRequest = USB_REQUEST_CLEAR_FEATURE;
-			ctlurb.u.setup.wValue = USBHUB_FEATURE_C_PORT_CONNECTION;
-			ctlurb.u.setup.wIndex = i+1;
-			ctlurb.u.setup.wLength = 0;
-			ctlurb.u.buffer = NULL;
-			ctlurb.u.buffer_len = 0;
+			ctlurb.setup.bmRequestType = 0x23;
+			ctlurb.setup.bRequest = USB_REQUEST_CLEAR_FEATURE;
+			ctlurb.setup.wValue = USBHUB_FEATURE_C_PORT_CONNECTION;
+			ctlurb.setup.wIndex = i+1;
+			ctlurb.setup.wLength = 0;
+			ctlurb.buffer = NULL;
+			ctlurb.buffer_len = 0;
 
-			usb::submitURB(&ctlurb.u);
+			usb::submitURB(&ctlurb);
 
 			return;
 		}
@@ -425,15 +408,15 @@ void USBHUBDev::checkStatus() {
 
 			state = ChangeAck;
 
-			ctlurb.u.setup.bmRequestType = 0x23;
-			ctlurb.u.setup.bRequest = USB_REQUEST_CLEAR_FEATURE;
-			ctlurb.u.setup.wValue = USBHUB_FEATURE_C_PORT_ENABLE;
-			ctlurb.u.setup.wIndex = i+1;
-			ctlurb.u.setup.wLength = 0;
-			ctlurb.u.buffer = NULL;
-			ctlurb.u.buffer_len = 0;
+			ctlurb.setup.bmRequestType = 0x23;
+			ctlurb.setup.bRequest = USB_REQUEST_CLEAR_FEATURE;
+			ctlurb.setup.wValue = USBHUB_FEATURE_C_PORT_ENABLE;
+			ctlurb.setup.wIndex = i+1;
+			ctlurb.setup.wLength = 0;
+			ctlurb.buffer = NULL;
+			ctlurb.buffer_len = 0;
 
-			usb::submitURB(&ctlurb.u);
+			usb::submitURB(&ctlurb);
 
 			return;
 		}
@@ -444,15 +427,15 @@ void USBHUBDev::checkStatus() {
 
 			state = ChangeAck;
 
-			ctlurb.u.setup.bmRequestType = 0x23;
-			ctlurb.u.setup.bRequest = USB_REQUEST_CLEAR_FEATURE;
-			ctlurb.u.setup.wValue = USBHUB_FEATURE_C_PORT_SUSPEND;
-			ctlurb.u.setup.wIndex = i+1;
-			ctlurb.u.setup.wLength = 0;
-			ctlurb.u.buffer = NULL;
-			ctlurb.u.buffer_len = 0;
+			ctlurb.setup.bmRequestType = 0x23;
+			ctlurb.setup.bRequest = USB_REQUEST_CLEAR_FEATURE;
+			ctlurb.setup.wValue = USBHUB_FEATURE_C_PORT_SUSPEND;
+			ctlurb.setup.wIndex = i+1;
+			ctlurb.setup.wLength = 0;
+			ctlurb.buffer = NULL;
+			ctlurb.buffer_len = 0;
 
-			usb::submitURB(&ctlurb.u);
+			usb::submitURB(&ctlurb);
 
 			return;
 		}
@@ -464,15 +447,15 @@ void USBHUBDev::checkStatus() {
 
 			state = ChangeAck;
 
-			ctlurb.u.setup.bmRequestType = 0x23;
-			ctlurb.u.setup.bRequest = USB_REQUEST_CLEAR_FEATURE;
-			ctlurb.u.setup.wValue = USBHUB_FEATURE_C_PORT_OVER_CURRENT;
-			ctlurb.u.setup.wIndex = i+1;
-			ctlurb.u.setup.wLength = 0;
-			ctlurb.u.buffer = NULL;
-			ctlurb.u.buffer_len = 0;
+			ctlurb.setup.bmRequestType = 0x23;
+			ctlurb.setup.bRequest = USB_REQUEST_CLEAR_FEATURE;
+			ctlurb.setup.wValue = USBHUB_FEATURE_C_PORT_OVER_CURRENT;
+			ctlurb.setup.wIndex = i+1;
+			ctlurb.setup.wLength = 0;
+			ctlurb.buffer = NULL;
+			ctlurb.buffer_len = 0;
 
-			usb::submitURB(&ctlurb.u);
+			usb::submitURB(&ctlurb);
 
 			return;
 		}
@@ -486,15 +469,15 @@ void USBHUBDev::checkStatus() {
 			assert(activatingPort == i);
 			state = PortInitResetAck;
 
-			ctlurb.u.setup.bmRequestType = 0x23;
-			ctlurb.u.setup.bRequest = USB_REQUEST_CLEAR_FEATURE;
-			ctlurb.u.setup.wValue = USBHUB_FEATURE_C_PORT_RESET;
-			ctlurb.u.setup.wIndex = i+1;
-			ctlurb.u.setup.wLength = 0;
-			ctlurb.u.buffer = NULL;
-			ctlurb.u.buffer_len = 0;
+			ctlurb.setup.bmRequestType = 0x23;
+			ctlurb.setup.bRequest = USB_REQUEST_CLEAR_FEATURE;
+			ctlurb.setup.wValue = USBHUB_FEATURE_C_PORT_RESET;
+			ctlurb.setup.wIndex = i+1;
+			ctlurb.setup.wLength = 0;
+			ctlurb.buffer = NULL;
+			ctlurb.buffer_len = 0;
 
-			usb::submitURB(&ctlurb.u);
+			usb::submitURB(&ctlurb);
 
 			return;
 		}

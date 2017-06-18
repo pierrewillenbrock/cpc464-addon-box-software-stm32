@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <sys/types.h>
+#include <sigc++/sigc++.h>
 
 #include <refcounted.hpp>
 
@@ -26,9 +27,8 @@ namespace usb {
 		void *buffer;   //for all transactions
 		size_t buffer_len;
 		size_t buffer_received;
-		enum { Ack, Nak, Stall, Nyet, TXErr, DTErr } result; //for Bulk, Control and IRQ transactions
-		void *userpriv;
-		void (*completion)(int result, URB *u);
+		enum USBResult { Ack, Nak, Stall, Nyet, TXErr, DTErr } result; //for Bulk, Control and IRQ transactions
+		sigc::slot<void(int, URB*)> slot;
 		/** \brief Time for first packet if Bulk or Control, for all packets otherwise
 		 *
 		 * Calculate the time required for processing the packets that need to happen in this frame

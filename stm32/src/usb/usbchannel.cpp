@@ -6,6 +6,7 @@
 #include <usb/usbendpoint.hpp>
 #include <eventlogger.hpp>
 #include "usbpriv.hpp"
+#include <deferredwork.hpp>
 
 #include "usbdev.h"
 
@@ -411,9 +412,7 @@ void usb::Channel::INT() {
 			if (data_urb_remaining == 0) {
 				//done with the URB.
 				state = Unused;
-				current_urb = NULL;
-				u->result = usb::URB::Ack;
-				u->completion(0, u);
+				completeCurrentURB(0,usb::URB::Ack);
 			} else
 				state = TXWaitSOF;
 			break;
@@ -501,9 +500,7 @@ void usb::Channel::INT() {
 			LogEvent("USBChannel: XFRC in CtlStatusRXWait", this);
 			//the channel disabled itself at this point.
 			state = Unused;
-			current_urb = NULL;
-			u->result = usb::URB::Ack;
-			u->completion(0, u);
+			completeCurrentURB(0,usb::URB::Ack);
 			break;
 		case RXWait:
 			LogEvent("USBChannel: XFRC in RXWait", this);
@@ -518,9 +515,7 @@ void usb::Channel::INT() {
 			if (data_urb_remaining == 0) {
 				u->buffer_received = u->buffer_len - data_urb_remaining;
 				state = Unused;
-				current_urb = NULL;
-				u->result = usb::URB::Ack;
-				u->completion(0, u);
+				completeCurrentURB(0,usb::URB::Ack);
 			} else
 				state = RXWaitSOF;
 			break;
@@ -546,9 +541,7 @@ void usb::Channel::INT() {
 			transfer.data_handled = 0;
 			//cannot automatically recover from this, so communicate URB error
 			u->buffer_received = u->buffer_len - data_urb_remaining;
-			current_urb = NULL;
-			u->result = usb::URB::TXErr;
-			u->completion(1, u);
+			completeCurrentURB(1,usb::URB::TXErr);
 			break;
 		default: assert(0); break;
 		}
@@ -584,9 +577,7 @@ void usb::Channel::INT() {
 		transfer.state = Transfer::Disabling;
 		//cannot automatically recover from this, so communicate URB error
 		u->buffer_received = u->buffer_len - data_urb_remaining;
-		current_urb = NULL;
-		u->result = usb::URB::DTErr;
-		u->completion(1, u);
+		completeCurrentURB(1,usb::URB::DTErr);
 	}
 	if (hcint & OTG_HCINT_FRMOR) {
 		hcint &= ~OTG_HCINT_FRMOR;//todo: this keeps happening, need to estimate transaction time before commiting one and check if it fits into the frame. also need to put the periodic urbs in a (priority-)queue instead of having them eat up channels that idle.
@@ -678,9 +669,7 @@ void usb::Channel::INT() {
 				transfer.state != Transfer::Disabling);
 			usb::frameChannelTime -= transfer.transfer_time;
 			transfer.state = Transfer::Disabling;
-			current_urb = NULL;
-			u->result = usb::URB::TXErr;
-			u->completion(1, u);
+			completeCurrentURB(1,usb::URB::TXErr);
 			break;
 		default: assert(0); break;
 		}
@@ -717,10 +706,8 @@ void usb::Channel::INT() {
 			else
 				data_urb_remaining = 0;
 			transfer.data_handled = 0;
-			u->result = usb::URB::Stall;
 			u->buffer_received = u->buffer_len - data_urb_remaining;
-			current_urb = NULL;
-			u->completion(1, u);
+			completeCurrentURB(1,usb::URB::Stall);
 			break;
 		default: assert(0); break;
 		}
@@ -1102,6 +1089,14 @@ bool usb::Channel::continueBulkTransfer(bool deviceToHost, bool force) {
 			doOUTTransfer(data_urb, data_urb_remaining, true);
 	}
 	return true;
+}
+
+void usb::Channel::completeCurrentURB(int resultcode, URB::USBResult usbresult) {
+	URB *u = current_urb;
+	current_urb = NULL;
+	u->result = usbresult;
+	if(u->slot)
+		addDeferredWork(sigc::bind(u->slot,resultcode,u));
 }
 
 void usb::Channel::setupForURB( usb::URB *u) {

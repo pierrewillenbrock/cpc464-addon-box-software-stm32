@@ -235,10 +235,7 @@ private:
 	enum { None, FetchReportDescriptor, InitialReportRequests, Configured, Disconnected
 	} state;
 
-	struct USBHIDDeviceURB {
-		USBHIDDev *_this;
-		usb::URB u;
-	} irqurb, ctlurb;
+	usb::URB  irqurb, ctlurb;
 	std::vector<uint8_t> ctldata;
 	std::vector<uint8_t> irqdata;
 	USBHIDDescriptorHID *hiddescriptor;
@@ -246,10 +243,8 @@ private:
 	uint8_t input_polling_interval;
 	uint8_t interfaceNumber;
 	void ctlurbCompletion(int result, usb::URB *u);
-	static void _ctlurbCompletion(int result, usb::URB *u);
 #ifdef SUPPORT_INPUTS
 	void irqurbCompletion(int result, usb::URB */*u*/);
-	static void _irqurbCompletion(int result, usb::URB *u);
 #endif
 	void parseReportDescriptor(uint8_t *data, size_t size);
 
@@ -763,15 +758,14 @@ void USBHIDDev::ctlurbCompletion(int result, usb::URB *u) {
 				input_max_size += 1;//need space for the report id
 
 			//setup the URB
-			irqurb._this = this;
-			irqurb.u.endpoint = device->getEndpoint(input_endpoint);
+			irqurb.endpoint = device->getEndpoint(input_endpoint);
 			irqdata.resize(input_max_size);
-			irqurb.u.pollingInterval = input_polling_interval;
-			irqurb.u.buffer = irqdata.data();
-			irqurb.u.buffer_len = irqdata.size();
-			irqurb.u.completion = _irqurbCompletion;
+			irqurb.pollingInterval = input_polling_interval;
+			irqurb.buffer = irqdata.data();
+			irqurb.buffer_len = irqdata.size();
+			irqurb.slot = sigc::mem_fun(this, &USBHIDDev::irqurbCompletion);
 
-			usb::submitURB(&irqurb.u);
+			usb::submitURB(&irqurb);
 		}
 #endif
 #ifdef SUPPORT_FEATURES
@@ -812,16 +806,16 @@ void USBHIDDev::ctlurbCompletion(int result, usb::URB *u) {
 			}
 			requestReport->flags |= Report::Requested;
 
-			ctlurb.u.setup.bmRequestType = 0xa1;
-			ctlurb.u.setup.bRequest = 0x01; //Get_Report
-			ctlurb.u.setup.wValue = (requestFeature?0x0300:0x0100) | requestReport->report_id;
-			ctlurb.u.setup.wIndex = interfaceNumber;
-			ctlurb.u.setup.wLength = sz;
+			ctlurb.setup.bmRequestType = 0xa1;
+			ctlurb.setup.bRequest = 0x01; //Get_Report
+			ctlurb.setup.wValue = (requestFeature?0x0300:0x0100) | requestReport->report_id;
+			ctlurb.setup.wIndex = interfaceNumber;
+			ctlurb.setup.wLength = sz;
 			ctldata.resize(sz);
-			ctlurb.u.buffer = ctldata.data();
-			ctlurb.u.buffer_len = ctldata.size();
+			ctlurb.buffer = ctldata.data();
+			ctlurb.buffer_len = ctldata.size();
 
-			usb::submitURB(&ctlurb.u);
+			usb::submitURB(&ctlurb);
 
 			state = InitialReportRequests;
 		} else
@@ -836,15 +830,15 @@ void USBHIDDev::ctlurbCompletion(int result, usb::URB *u) {
 			//okay, got an initial report. give it to the parser.
 			//todo: factor that one out.
 #ifdef SUPPORT_INPUTS
-			if ((ctlurb.u.setup.wValue & 0xff00) == 0x0100)
+			if ((ctlurb.setup.wValue & 0xff00) == 0x0100)
 				parseReport(inputreports, ctldata);
 #endif
 #ifdef SUPPORT_FEATURES
-			if ((ctlurb.u.setup.wValue & 0xff00) == 0x0300)
+			if ((ctlurb.setup.wValue & 0xff00) == 0x0300)
 				parseReport(featurereports, ctldata);
 #endif
 #ifdef SUPPORT_FEATURES
-		} else if ((ctlurb.u.setup.wValue & 0xff00) == 0x0300) {
+		} else if ((ctlurb.setup.wValue & 0xff00) == 0x0300) {
 			//rerequest it. for the inputs, it may be reasonable to
 			//not respond(and deliver data through the irq instead),
 			//but for the feature reports, there is no other way.
@@ -895,16 +889,16 @@ void USBHIDDev::ctlurbCompletion(int result, usb::URB *u) {
 			}
 			requestReport->flags |= Report::Requested;
 
-			ctlurb.u.setup.bmRequestType = 0xa1;
-			ctlurb.u.setup.bRequest = 0x01;
-			ctlurb.u.setup.wValue = (requestFeature?0x0300:0x0100) | requestReport->report_id;
-			ctlurb.u.setup.wIndex = interfaceNumber;
-			ctlurb.u.setup.wLength = sz;
+			ctlurb.setup.bmRequestType = 0xa1;
+			ctlurb.setup.bRequest = 0x01;
+			ctlurb.setup.wValue = (requestFeature?0x0300:0x0100) | requestReport->report_id;
+			ctlurb.setup.wIndex = interfaceNumber;
+			ctlurb.setup.wLength = sz;
 			ctldata.resize(sz);
-			ctlurb.u.buffer = ctldata.data();
-			ctlurb.u.buffer_len = ctldata.size();
+			ctlurb.buffer = ctldata.data();
+			ctlurb.buffer_len = ctldata.size();
 
-			usb::submitURB(&ctlurb.u);
+			usb::submitURB(&ctlurb);
 
 			state = InitialReportRequests;
 		} else
@@ -914,11 +908,6 @@ void USBHIDDev::ctlurbCompletion(int result, usb::URB *u) {
 	}
 	default: assert(0); break;
 	}
-}
-
-void USBHIDDev::_ctlurbCompletion(int result, usb::URB *u) {
-	USBHIDDeviceURB *du = container_of(u, USBHIDDeviceURB, u);
-	du->_this->ctlurbCompletion(result, u);
 }
 
 #if defined(SUPPORT_INPUTS) || defined(SUPPORT_FEATURES)
@@ -984,11 +973,6 @@ void USBHIDDev::irqurbCompletion(int result, usb::URB */*u*/) {
 	if (inputreports.empty())
 		return;
 	parseReport(inputreports, irqdata);
-}
-
-void USBHIDDev::_irqurbCompletion(int result, usb::URB *u) {
-	USBHIDDeviceURB *du = container_of(u, USBHIDDeviceURB, u);
-	du->_this->irqurbCompletion(result, u);
 }
 
 void USBHIDDev::setValues(InOut *inout, std::vector<int32_t> &values) {
@@ -1106,19 +1090,18 @@ void USBHIDDev::interfaceClaimed(uint8_t interfaceNumber, uint8_t alternateSetti
 	}
 
 	state = FetchReportDescriptor;
-	ctlurb._this = this;
-	ctlurb.u.endpoint = device->getEndpoint(0);
-	ctlurb.u.setup.bmRequestType = 0x81;
-	ctlurb.u.setup.bRequest = 6;//GET DESCRIPTOR
-	ctlurb.u.setup.wValue = (0x22 << 8);
-	ctlurb.u.setup.wIndex = interfaceNumber;
-	ctlurb.u.setup.wLength = report_desc_size;
+	ctlurb.endpoint = device->getEndpoint(0);
+	ctlurb.setup.bmRequestType = 0x81;
+	ctlurb.setup.bRequest = 6;//GET DESCRIPTOR
+	ctlurb.setup.wValue = (0x22 << 8);
+	ctlurb.setup.wIndex = interfaceNumber;
+	ctlurb.setup.wLength = report_desc_size;
 	ctldata.resize(report_desc_size);
-	ctlurb.u.buffer = ctldata.data();
-	ctlurb.u.buffer_len = ctldata.size();
-	ctlurb.u.completion = _ctlurbCompletion;
+	ctlurb.buffer = ctldata.data();
+	ctlurb.buffer_len = ctldata.size();
+	ctlurb.slot = sigc::mem_fun(this, &USBHIDDev::ctlurbCompletion);
 
-	usb::submitURB(&ctlurb.u);
+	usb::submitURB(&ctlurb);
 
 	//a "report" is the content of the interrupt message.
 	//there may be multiple different reports. if that is the case,
@@ -1458,10 +1441,10 @@ void USBHIDDev::interfaceClaimed(uint8_t interfaceNumber, uint8_t alternateSetti
 
 void USBHIDDev::disconnected(RefPtr<usb::Device> /*device*/) {
 	state = Disconnected;
-	usb::retireURB(&ctlurb.u);
-	ctlurb.u.endpoint = NULL;
-	usb::retireURB(&irqurb.u);
-	irqurb.u.endpoint = NULL;
+	usb::retireURB(&ctlurb);
+	ctlurb.endpoint = NULL;
+	usb::retireURB(&irqurb);
+	irqurb.endpoint = NULL;
 	deviceRemove();
 	delete this;
 }
