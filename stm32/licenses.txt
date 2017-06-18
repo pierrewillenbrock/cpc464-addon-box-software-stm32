@@ -1,0 +1,8 @@
+
+Parts of this software are licensed under ARM 3-Clause BSD.
+Parts of this software are licensed under
+   MCD-ST Liberty SW License Agreement V2. This licence is a
+   3-Clause BSD licence with additional restrictions: The
+   code can be used only on ST microcontrollers.
+
+The rest is still undecided, so all rights reserved.
