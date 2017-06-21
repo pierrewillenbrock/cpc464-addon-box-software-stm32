@@ -13,7 +13,7 @@
 #include <bsp/stm32f4xx.h>
 #include <bsp/stm32f4xx_rcc.h>
 #include <irq.h>
-#include <timer.h>
+#include <timer.hpp>
 #include <assert.h>
 #include <deque>
 #include <bitset>
@@ -33,8 +33,7 @@ static RefPtr<usb::Device> rootDevice = NULL;///< \brief The current root device
 static volatile uint8_t usb_address = 1;///< \brief the next usb_address being used
 
 struct USBDeviceActivation {
-	void *data;
-	void (*activate)(void *data);
+	sigc::slot<void> slot;
 };
 
 static std::deque<usb::URB*> USB_nonperiodicQueue;///< \brief Queue holding non-periodic URBs
@@ -322,24 +321,19 @@ usb::URB *usb::getNextURB() {
 	return u;
 }
 
-void usb::queueDeviceActivation (void (*activate)(void*data),void *data) {
+void usb::queueDeviceActivation (sigc::slot<void> const &slot) {
 	LogEvent("USB_queueDeviceActivation");
-	bool directActivate = false;
 	{
 		ISR_Guard g;
-		if (USB_activationCurrent.activate == NULL) {
-			USB_activationCurrent.activate = activate;
-			USB_activationCurrent.data = data;
-			directActivate = true;
-		} else {
+		if (USB_activationCurrent.slot) {
 			USBDeviceActivation a;
-			a.activate = activate;
-			a.data = data;
+			a.slot = slot;
 			USB_activationQueue.push_back(a);
+			return;
 		}
+		USB_activationCurrent.slot = slot;
 	}
-	if (directActivate)
-		activate(data);
+	slot();
 }
 
 static std::bitset<128> used_addresses;
@@ -349,15 +343,14 @@ void usb::activationComplete() {
 	{
 		ISR_Guard g;
 		if (USB_activationQueue.empty()) {
-			USB_activationCurrent.activate = NULL;
-			USB_activationCurrent.data = NULL;
+			USB_activationCurrent = USBDeviceActivation();
 		} else {
 			USB_activationCurrent = USB_activationQueue.front();
 			USB_activationQueue.pop_front();
 		}
 	}
-	if (USB_activationCurrent.activate)
-		USB_activationCurrent.activate(USB_activationCurrent.data);
+	if (USB_activationCurrent.slot)
+		USB_activationCurrent.slot();
 }
 
 uint8_t usb::getNextAddress() {
@@ -382,7 +375,7 @@ void usb::deactivateAddress (uint8_t address) {
 	used_addresses[address] = false;
 }
 
-static void activateRootDevice(void */*unused*/) {
+static void activateRootDevice() {
 	LogEvent("USB:activateRootDevice");
 	//the irq handler does most of the work for us here,
 	//but an usb hub driver would have to queue port enable,
@@ -398,7 +391,7 @@ static void activateRootDevice(void */*unused*/) {
 
 static uint32_t usb_timer_handle = 0;
 
-static void USB_PortResetTimer(void */*unused*/) {
+static void USB_PortResetTimer() {
 	usb_timer_handle = 0;
 	LogEvent("USB_PortResetTimer");
 	//okay, we held reset for long enough.
@@ -408,13 +401,13 @@ static void USB_PortResetTimer(void */*unused*/) {
 	//irq getting emitted now.
 }
 
-static void USB_PortResetBeginTimer(void */*unused*/) {
+static void USB_PortResetBeginTimer() {
 	LogEvent("USB_PortResetBeginTimer");
 	uint32_t hprt = otgh->HPRT;
 	hprt &= ~(OTG_HPRT_PENCHNG|OTG_HPRT_PENA|OTG_HPRT_PCDET);
 	hprt |= OTG_HPRT_PRST;
 	otgh->HPRT = hprt;
-	usb_timer_handle = Timer_Oneshot(11000, USB_PortResetTimer, NULL);
+	usb_timer_handle = Timer_Oneshot(11000, sigc::ptr_fun(&USB_PortResetTimer));
 }
 
 void OTG_FS_IRQHandler() {
@@ -435,7 +428,7 @@ void OTG_FS_IRQHandler() {
 			hprt |= OTG_HPRT_PCDET;
 			otgh->HPRT = hprt;
 			Timer_Cancel(usb_timer_handle);
-			usb_timer_handle = Timer_Oneshot(100000, USB_PortResetBeginTimer, NULL);
+			usb_timer_handle = Timer_Oneshot(100000, sigc::ptr_fun(&USB_PortResetBeginTimer));
 			if (rootDevice) {
 				rootDevice->disconnected();
 				rootDevice = NULL;
@@ -468,10 +461,10 @@ void OTG_FS_IRQHandler() {
 						hprt |= OTG_HPRT_PRST;
 						otgh->HPRT = hprt;
 						Timer_Cancel(usb_timer_handle);
-						usb_timer_handle = Timer_Oneshot(11000, USB_PortResetTimer, NULL);
+						usb_timer_handle = Timer_Oneshot(11000, sigc::ptr_fun(&USB_PortResetTimer));
 					} else {
 						//now we need to create the new device
-						usb::queueDeviceActivation (activateRootDevice, NULL);
+						usb::queueDeviceActivation (sigc::ptr_fun(&activateRootDevice));
 					}
 				} else if ((otgh->HPRT & OTG_HPRT_PSPD_MASK) ==
 				    OTG_HPRT_PSPD_LS) {
@@ -492,10 +485,10 @@ void OTG_FS_IRQHandler() {
 						hprt |= OTG_HPRT_PRST;
 						otgh->HPRT = hprt;
 						Timer_Cancel(usb_timer_handle);
-						usb_timer_handle = Timer_Oneshot(11000, USB_PortResetTimer, NULL);
+						usb_timer_handle = Timer_Oneshot(11000, sigc::ptr_fun(&USB_PortResetTimer));
 					} else {
 						//now we need to create the new device
-						usb::queueDeviceActivation (activateRootDevice, NULL);
+						usb::queueDeviceActivation (sigc::ptr_fun(&activateRootDevice));
 					}
 				} else {
 					assert(0);

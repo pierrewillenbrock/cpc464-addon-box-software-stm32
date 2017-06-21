@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include <fpga/fpga_comm.h>
+#include <fpga/fpga_comm.hpp>
 #include <irq.h>
 #include <assert.h>
 #include <bits.h>
@@ -19,17 +19,13 @@ private:
 	//not copyable.
 	FPGA_Uploader(FPGA_Uploader const &) {}
 	FPGA_Uploader &operator=(FPGA_Uploader const &) {return *this;}
-	void cmpl(int /*result*/, FPGAComm_Command */*command*/) {
+	void cmpl(int /*result*/) {
 		ISR_Guard g;
 		switch(state) {
 		case Clean: assert(0); break;
 		case Transfer: state = Clean; break;
 		case Dirty: start(); break;
 		}
-	}
-	static void _cmpl(int result, FPGAComm_Command *command) {
-		Cmd *c = container_of(command, Cmd, cmd);
-		c->_this->cmpl(result, command);
 	}
 	void start() {
 		state = Transfer;
@@ -42,13 +38,13 @@ public:
 	FPGA_Uploader() : state(Clean) {
 		cmd._this = this;
 		cmd.cmd.read_data = NULL;
-		cmd.cmd.completion = _cmpl;
+		cmd.cmd.slot = sigc::mem_fun(this, &FPGA_Uploader::cmpl);
 	}
 	FPGA_Uploader(uint32_t dest, void const *src, size_t size)
 		: dest(dest), src(src), size(size), state(Clean) {
 		cmd._this = this;
 		cmd.cmd.read_data = NULL;
-		cmd.cmd.completion = _cmpl;
+		cmd.cmd.slot = sigc::mem_fun(this, &FPGA_Uploader::cmpl);
 	}
 	~FPGA_Uploader() {
 		assert(state == Clean);

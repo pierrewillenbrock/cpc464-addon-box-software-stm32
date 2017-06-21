@@ -2,7 +2,7 @@
 #pragma once
 
 #include <refcounted.hpp>
-#include <fpga/fpga_comm.h>
+#include <fpga/fpga_comm.hpp>
 #include <array>
 
 namespace ui {
@@ -46,7 +46,7 @@ namespace ui {
 		void allocateIcon(Icon const *icon);
 		void deallocateIcon(Icon const *icon);
 		void checkTiles();
-		static void _fpgacmpl(int result, FPGAComm_Command *command);
+		void fpgacmpl(int result);
 		friend class Icon;
 	public:
 		Icons();

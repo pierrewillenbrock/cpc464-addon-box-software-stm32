@@ -47,11 +47,9 @@ namespace dsk {
 	class DSK : public Disk {
 	private:
 		unsigned short TrackSize;
-		void preloadReadComplete(int res, int errno_code, PReadCommand *command);
-		static void _preloadReadComplete(int res, int errno_code, PReadCommand *command);
+		void preloadReadComplete(int res, int errno_code);
 		void fillSectorInfoAndComplete();
-		void findSectorReadComplete(int res, int errno_code, PReadCommand *command);
-		static void _findSectorReadComplete(int res, int errno_code, PReadCommand *command);
+		void findSectorReadComplete(int res, int /*errno_code*/);
 	public:
 		bool probe(int fd);
 		virtual void close();
@@ -100,11 +98,9 @@ namespace dsk {
 	private:
 		unsigned short TrackSize;
 		std::vector<unsigned char> TrackSizeTable;
-		void preloadReadComplete(int res, int errno_code, PReadCommand *command);
-		static void _preloadReadComplete(int res, int errno_code, PReadCommand *command);
+		void preloadReadComplete(int res, int errno_code);
 		void fillSectorInfoAndComplete();
-		void findSectorReadComplete(int res, int errno_code, PReadCommand *command);
-		static void _findSectorReadComplete(int res, int errno_code, PReadCommand *command);
+		void findSectorReadComplete(int res, int /*errno_code*/);
 	public:
 		bool probe(int fd);
 		virtual void close();
@@ -180,33 +176,26 @@ void DSK::close() {
 	::close(f);
 }
 
-void DSK::preloadReadComplete(int res, int errno_code, PReadCommand *command) {
+void DSK::preloadReadComplete(int res, int errno_code) {
 	current_cylinderno = preload_cylinderno;
 	if (res == -1)
 		current_cylinderno = ~0U;
 	if (state == FIND) {
 		if (current_cylinderno == current_command->pcn) {
-			findSectorReadComplete(res, errno_code, command);
+			findSectorReadComplete(res, errno_code);
 		} else {
 			unsigned TrackIndex = current_command->pcn * NumSides;
 			unsigned CylinderSize = TrackSize * NumSides;
 			current_cylinder.resize(CylinderSize);
-			preadinfo._this = this;
-			preadinfo.cmd.ptr = current_cylinder.data();
-			preadinfo.cmd.len = CylinderSize;
-			preadinfo.cmd.offset = TrackOffsetTable[TrackIndex];
-			preadinfo.cmd.completion = _findSectorReadComplete;
-			pread_nb(fd, &preadinfo.cmd);
+			preadcmd.ptr = current_cylinder.data();
+			preadcmd.len = CylinderSize;
+			preadcmd.offset = TrackOffsetTable[TrackIndex];
+			preadcmd.slot = sigc::mem_fun(this, &DSK::findSectorReadComplete);
+			aio::pread(fd, &preadcmd);
 		}
 	} else {
 		state = IDLE;
 	}
-}
-
-void DSK::_preloadReadComplete(int res, int errno_code, PReadCommand *command) {
-	PReadInfo *i = container_of(command, PReadInfo, cmd);
-	static_cast<DSK*>(i->_this)->
-		preloadReadComplete(res, errno_code, command);
 }
 
 void DSK::preloadCylinder(unsigned pcn) {
@@ -218,12 +207,11 @@ void DSK::preloadCylinder(unsigned pcn) {
 			unsigned TrackIndex = pcn * NumSides;
 			unsigned CylinderSize = TrackSize * NumSides;
 			current_cylinder.resize(CylinderSize);
-			preadinfo._this = this;
-			preadinfo.cmd.ptr = current_cylinder.data();
-			preadinfo.cmd.len = CylinderSize;
-			preadinfo.cmd.offset = TrackOffsetTable[TrackIndex];
-			preadinfo.cmd.completion = _preloadReadComplete;
-			pread_nb(fd, &preadinfo.cmd);
+			preadcmd.ptr = current_cylinder.data();
+			preadcmd.len = CylinderSize;
+			preadcmd.offset = TrackOffsetTable[TrackIndex];
+			preadcmd.slot = sigc::mem_fun(this, &DSK::preloadReadComplete);
+			aio::pread(fd, &preadcmd);
 		}
 	}
 }
@@ -280,16 +268,16 @@ void DSK::fillSectorInfoAndComplete() {
 	}
 	state = IDLE;
 	current_command = NULL;
-	c->completion(d, c);
+	c->slot(d);
 }
 
-void DSK::findSectorReadComplete(int res, int /*errno*/, PReadCommand */*command*/) {
+void DSK::findSectorReadComplete(int res, int /*errno*/) {
 	DiskFindSectorCommand *c = current_command;
 	if (res == -1) {
 		current_cylinderno = ~0U;
 		state = IDLE;
 		current_command = NULL;
-		c->completion(RefPtr<DiskSector>(), c);
+		c->slot(RefPtr<DiskSector>());
 		return;
 	}
 	current_cylinderno = c->pcn;
@@ -303,22 +291,16 @@ void DSK::findSectorReadComplete(int res, int /*errno*/, PReadCommand */*command
 		state = IDLE;
 		current_cylinderno = ~0U;
 		current_command = NULL;
-		c->completion(RefPtr<DiskSector>(), c);
+		c->slot(RefPtr<DiskSector>());
 		return;
 	}
 	fillSectorInfoAndComplete();
 }
 
 
-void DSK::_findSectorReadComplete(int res, int errno_code, PReadCommand *command) {
-	PReadInfo *i = container_of(command, PReadInfo, cmd);
-	static_cast<DSK*>(i->_this)->
-		findSectorReadComplete(res, errno_code, command);
-}
-
 void DSK::findSector(DiskFindSectorCommand *command) {
 	if (command->pcn > NumTracks || command->phn > NumSides) {
-		command->completion(RefPtr<DiskSector>(), command);
+		command->slot(RefPtr<DiskSector>());
 		return;
 	}
 	{
@@ -332,12 +314,11 @@ void DSK::findSector(DiskFindSectorCommand *command) {
 			unsigned TrackIndex = command->pcn * NumSides;
 			unsigned CylinderSize = TrackSize * NumSides;
 			current_cylinder.resize(CylinderSize);
-			preadinfo._this = this;
-			preadinfo.cmd.ptr = current_cylinder.data();
-			preadinfo.cmd.len = CylinderSize;
-			preadinfo.cmd.offset = TrackOffsetTable[TrackIndex];
-			preadinfo.cmd.completion = _findSectorReadComplete;
-			pread_nb(fd, &preadinfo.cmd);
+			preadcmd.ptr = current_cylinder.data();
+			preadcmd.len = CylinderSize;
+			preadcmd.offset = TrackOffsetTable[TrackIndex];
+			preadcmd.slot = sigc::mem_fun(this, &DSK::findSectorReadComplete);
+			aio::pread(fd, &preadcmd);
 			return;
 		} else {
 			state = FIND;
@@ -392,13 +373,13 @@ void ExtDSK::close() {
 	::close(f);
 }
 
-void ExtDSK::preloadReadComplete(int res, int errno_code, PReadCommand *command) {
+void ExtDSK::preloadReadComplete(int res, int errno_code) {
 	current_cylinderno = preload_cylinderno;
 	if (res == -1)
 		current_cylinderno = ~0U;
 	if (state == FIND) {
 		if (current_cylinderno == current_command->pcn) {
-			findSectorReadComplete(res, errno_code, command);
+			findSectorReadComplete(res, errno_code);
 		} else {
 			unsigned TrackIndex = current_command->pcn * NumSides;
 			unsigned CylinderSize = 0;
@@ -408,22 +389,15 @@ void ExtDSK::preloadReadComplete(int res, int errno_code, PReadCommand *command)
 				CylinderSize += TrackSizeTable[i] << 8;
 			}
 			current_cylinder.resize(CylinderSize);
-			preadinfo._this = this;
-			preadinfo.cmd.ptr = current_cylinder.data();
-			preadinfo.cmd.len = CylinderSize;
-			preadinfo.cmd.offset = TrackOffsetTable[TrackIndex];
-			preadinfo.cmd.completion = _findSectorReadComplete;
-			pread_nb(fd, &preadinfo.cmd);
+			preadcmd.ptr = current_cylinder.data();
+			preadcmd.len = CylinderSize;
+			preadcmd.offset = TrackOffsetTable[TrackIndex];
+			preadcmd.slot = sigc::mem_fun(this, &ExtDSK::findSectorReadComplete);
+			aio::pread(fd, &preadcmd);
 		}
 	} else {
 		state = IDLE;
 	}
-}
-
-void ExtDSK::_preloadReadComplete(int res, int errno_code, PReadCommand *command) {
-	PReadInfo *i = container_of(command, PReadInfo, cmd);
-	static_cast<ExtDSK*>(i->_this)->
-		preloadReadComplete(res, errno_code, command);
 }
 
 void ExtDSK::preloadCylinder(unsigned pcn) {
@@ -440,12 +414,11 @@ void ExtDSK::preloadCylinder(unsigned pcn) {
 				CylinderSize += TrackSizeTable[i] << 8;
 			}
 			current_cylinder.resize(CylinderSize);
-			preadinfo._this = this;
-			preadinfo.cmd.ptr = current_cylinder.data();
-			preadinfo.cmd.len = CylinderSize;
-			preadinfo.cmd.offset = TrackOffsetTable[TrackIndex];
-			preadinfo.cmd.completion = _preloadReadComplete;
-			pread_nb(fd, &preadinfo.cmd);
+			preadcmd.ptr = current_cylinder.data();
+			preadcmd.len = CylinderSize;
+			preadcmd.offset = TrackOffsetTable[TrackIndex];
+			preadcmd.slot = sigc::mem_fun(this, &ExtDSK::preloadReadComplete);
+			aio::pread(fd, &preadcmd);
 		}
 	}
 }
@@ -460,7 +433,7 @@ void ExtDSK::fillSectorInfoAndComplete() {
 	if (TrackSizeTable[TrackIndex + phn] == 0) {
 		state = IDLE;
 		current_command = NULL;
-		c->completion(RefPtr<DiskSector>(), c);
+		c->slot(RefPtr<DiskSector>());
 		return;
 	}
 	unsigned offset = 0;
@@ -516,16 +489,16 @@ void ExtDSK::fillSectorInfoAndComplete() {
 	}
 	state = IDLE;
 	current_command = NULL;
-	c->completion(d, c);
+	c->slot(d);
 }
 
-void ExtDSK::findSectorReadComplete(int res, int /*errno*/, PReadCommand */*command*/) {
+void ExtDSK::findSectorReadComplete(int res, int /*errno*/) {
 	DiskFindSectorCommand *c = current_command;
 	if (res == -1) {
 		current_cylinderno = ~0U;
 		state = IDLE;
 		current_command = NULL;
-		c->completion(RefPtr<DiskSector>(), c);
+		c->slot(RefPtr<DiskSector>());
 		return;
 	}
 	current_cylinderno = c->pcn;
@@ -537,7 +510,7 @@ void ExtDSK::findSectorReadComplete(int res, int /*errno*/, PReadCommand */*comm
 	if (TrackSizeTable[TrackIndex + phn] == 0) {
 		state = IDLE;
 		current_command = NULL;
-		c->completion(RefPtr<DiskSector>(), c);
+		c->slot(RefPtr<DiskSector>());
 		return;
 	}
 	unsigned offset = 0;
@@ -549,21 +522,15 @@ void ExtDSK::findSectorReadComplete(int res, int /*errno*/, PReadCommand */*comm
 		state = IDLE;
 		current_cylinderno = ~0U;
 		current_command = NULL;
-		c->completion(RefPtr<DiskSector>(), c);
+		c->slot(RefPtr<DiskSector>());
 		return;
 	}
 	fillSectorInfoAndComplete();
 }
 
-void ExtDSK::_findSectorReadComplete(int res, int errno_code, PReadCommand *command) {
-	PReadInfo *i = container_of(command, PReadInfo, cmd);
-	static_cast<ExtDSK*>(i->_this)->
-		findSectorReadComplete(res, errno_code, command);
-}
-
 void ExtDSK::findSector(DiskFindSectorCommand *command) {
 	if (command->pcn > NumTracks || command->phn > NumSides) {
-		command->completion(RefPtr<DiskSector>(), command);
+		command->slot(RefPtr<DiskSector>());
 		return;
 	}
 	{
@@ -582,12 +549,11 @@ void ExtDSK::findSector(DiskFindSectorCommand *command) {
 				CylinderSize += TrackSizeTable[i] << 8;
 			}
 			current_cylinder.resize(CylinderSize);
-			preadinfo._this = this;
-			preadinfo.cmd.ptr = current_cylinder.data();
-			preadinfo.cmd.len = CylinderSize;
-			preadinfo.cmd.offset = TrackOffsetTable[TrackIndex];
-			preadinfo.cmd.completion = _findSectorReadComplete;
-			pread_nb(fd, &preadinfo.cmd);
+			preadcmd.ptr = current_cylinder.data();
+			preadcmd.len = CylinderSize;
+			preadcmd.offset = TrackOffsetTable[TrackIndex];
+			preadcmd.slot = sigc::mem_fun(this, &ExtDSK::findSectorReadComplete);
+			aio::pread(fd, &preadcmd);
 			return;
 		} else {
 			state = FIND;

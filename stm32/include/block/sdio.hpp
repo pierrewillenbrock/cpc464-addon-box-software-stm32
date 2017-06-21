@@ -2,6 +2,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <sigc++/sigc++.h>
 
 #define SDIO_OK                0
 #define SDIO_SystemTimeout     1
@@ -59,14 +60,10 @@ struct SDCommand {
 	void *data;
 	uint32_t datalength;
 	uint32_t datablocksize;
-	void (*completion)(int result, struct SDCommand *command);
+	sigc::slot<void(int)> slot;
 	uint8_t state;
 	uint32_t datapos;
 };
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 void SDIO_Setup(void);
 void SDIO_PowerUp(void);
@@ -75,6 +72,3 @@ void SDIO_ConfigureBus(int widebus, int maxkhz);
 void SDIO_PowerDown(void);
 void SDIO_Command(struct SDCommand *command);
 
-#ifdef __cplusplus
-}
-#endif

@@ -1096,7 +1096,7 @@ void usb::Channel::completeCurrentURB(int resultcode, URB::USBResult usbresult) 
 	current_urb = NULL;
 	u->result = usbresult;
 	if(u->slot)
-		addDeferredWork(sigc::bind(u->slot,resultcode,u));
+		addDeferredWork(sigc::bind(u->slot,resultcode));
 }
 
 void usb::Channel::setupForURB( usb::URB *u) {

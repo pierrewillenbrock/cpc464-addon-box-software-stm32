@@ -6,7 +6,7 @@
 #include <vector>
 #include <deque>
 #include <bits.h>
-#include <timer.h>
+#include <timer.hpp>
 #include "usbpriv.hpp"
 
 #include "usbhub.h"
@@ -36,8 +36,8 @@ private:
 		uint32_t resetTimer;
 		USBHUBDev *hubdev;
 		RefPtr<usb::Device> device;
-		static void _resetTimeout(void *data);
-		static void _activate(void *data);
+		void resetTimeout();
+		void activate();
 		Port() : flags(NeedsCheck),
 			 status(0),
 			 change(0),
@@ -59,8 +59,8 @@ private:
 	bool needsHubStatusCheck;
 	uint16_t hubStatus;
 	uint8_t activatingPort;
-	void ctlurbCompletion(int result, usb::URB *u);
-	void irqurbCompletion(int result, usb::URB */*u*/);
+	void ctlurbCompletion(int result);
+	void irqurbCompletion(int result);
 
 	void checkStatus();
 public:
@@ -108,10 +108,10 @@ struct USBHUBStatus {
 	uint16_t change;
 } PACKED;
 
-void USBHUBDev::ctlurbCompletion(int result, usb::URB *u) {
+void USBHUBDev::ctlurbCompletion(int result) {
 	if (result != 0) {
 		//try again
-		usb::submitURB(u);
+		usb::submitURB(&ctlurb);
 		return;
 	}
 	switch(state) {
@@ -119,13 +119,13 @@ void USBHUBDev::ctlurbCompletion(int result, usb::URB *u) {
 		//yay, got the descriptor!
 		//now, parse it.
 		USBDescriptorHUB *d = (USBDescriptorHUB*)ctldata.data();
-		if (u->buffer_received < d->bLength) {
+		if (ctlurb.buffer_received < d->bLength) {
 			//reissue with the correct length.
 			ctlurb.setup.wLength = d->bLength;
 			ctldata.resize(d->bLength);
 			ctlurb.buffer = ctldata.data();
 			ctlurb.buffer_len = ctldata.size();
-			usb::submitURB(u);
+			usb::submitURB(&ctlurb);
 			return;
 		}
 
@@ -167,8 +167,8 @@ void USBHUBDev::ctlurbCompletion(int result, usb::URB *u) {
 	}
 	case CheckingPortStatus: {
 		USBHUBStatus *s = (USBHUBStatus*)ctldata.data();
-		ports[u->setup.wIndex-1].status = s->status;
-		ports[u->setup.wIndex-1].change = s->change;
+		ports[ctlurb.setup.wIndex-1].status = s->status;
+		ports[ctlurb.setup.wIndex-1].change = s->change;
 		state = Configured;
 		checkStatus();
 		break;
@@ -189,34 +189,34 @@ void USBHUBDev::ctlurbCompletion(int result, usb::URB *u) {
 	{
 		state = PortInitFetchStatus;
 
-		u->setup.bmRequestType = 0xa3;
-		u->setup.bRequest = 0;//GET STATUS
-		u->setup.wValue = 0;
-		u->setup.wLength = 4;
+		ctlurb.setup.bmRequestType = 0xa3;
+		ctlurb.setup.bRequest = 0;//GET STATUS
+		ctlurb.setup.wValue = 0;
+		ctlurb.setup.wLength = 4;
 		ctldata.resize(4);
-		u->buffer = ctldata.data();
-		u->buffer_len = ctldata.size();
+		ctlurb.buffer = ctldata.data();
+		ctlurb.buffer_len = ctldata.size();
 
-		usb::submitURB(u);
+		usb::submitURB(&ctlurb);
 
 		break;
 	}
 	case PortInitFetchStatus: {
 		USBHUBStatus *s = (USBHUBStatus*)ctldata.data();
-		ports[u->setup.wIndex-1].status = s->status;
-		ports[u->setup.wIndex-1].change = s->change;
-		ports[u->setup.wIndex-1].flags &= ~Port::Activating;
+		ports[ctlurb.setup.wIndex-1].status = s->status;
+		ports[ctlurb.setup.wIndex-1].change = s->change;
+		ports[ctlurb.setup.wIndex-1].flags &= ~Port::Activating;
 
 		//port is enabled, we know the speed setting.
 		//now we need to do the activation with address
 		if (s->status & USBHUB_PORT_STATUS_PORT_LOW_SPEED) {
-			ports[u->setup.wIndex-1].device =
+			ports[ctlurb.setup.wIndex-1].device =
 				new usb::Device (usb::Speed::Low);
 		} else {
-			ports[u->setup.wIndex-1].device =
+			ports[ctlurb.setup.wIndex-1].device =
 				new usb::Device (usb::Speed::Full);
 		}
-		ports[u->setup.wIndex-1].device->activate();
+		ports[ctlurb.setup.wIndex-1].device->activate();
 		activatingPort = 0xff;
 
 		state = Configured;
@@ -226,7 +226,7 @@ void USBHUBDev::ctlurbCompletion(int result, usb::URB *u) {
 	}
 }
 
-void USBHUBDev::irqurbCompletion(int result, usb::URB */*u*/) {
+void USBHUBDev::irqurbCompletion(int result) {
 	//this is called repeatedly by the usb subsystem.
 	if (result != 0)
 		return;
@@ -373,7 +373,7 @@ void USBHUBDev::checkStatus() {
 			if (ports[i].status & USBHUB_PORT_STATUS_PORT_CONNECTION) {
 				//need to wait for 100ms, then do a port reset
 				ports[i].resetTimer =
-					Timer_Oneshot(100000, Port::_resetTimeout, &ports[i]);
+					Timer_Oneshot(100000, sigc::mem_fun(ports[i], &Port::resetTimeout));
 			} else {
 				Timer_Cancel(ports[i].resetTimer);
 				//if we have a device allocated, drop it.
@@ -490,16 +490,15 @@ void USBHUBDev::checkStatus() {
 	}
 }
 
-void USBHUBDev::Port::_resetTimeout(void*data) {
+void USBHUBDev::Port::resetTimeout() {
 	//just flag it, then ask the hub device about anything it wants to do.
-	usb::queueDeviceActivation (_activate, data);
+	usb::queueDeviceActivation (sigc::mem_fun(this, &Port::activate));
 }
 
-void USBHUBDev::Port::_activate(void*data) {
-	USBHUBDev::Port *_this = (USBHUBDev::Port*)data;
-	_this->flags |= NeedsReset | Activating;
-	assert(_this->hubdev);
-	_this->hubdev->checkStatus();
+void USBHUBDev::Port::activate() {
+	flags |= NeedsReset | Activating;
+	assert(hubdev);
+	hubdev->checkStatus();
 }
 
 static USBHUB usbhub_driver;

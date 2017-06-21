@@ -1,6 +1,6 @@
 
 #include <fpga/font.h>
-#include <fpga/fpga_comm.h>
+#include <fpga/fpga_comm.hpp>
 #include <fpga/layout.h>
 #include <fpga/sprite.h>
 

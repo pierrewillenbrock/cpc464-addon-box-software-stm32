@@ -1,5 +1,5 @@
 
-#include <timer.h>
+#include <timer.hpp>
 #include <unistd.h>
 #include <irq.h>
 
@@ -8,8 +8,7 @@
 struct Timer {
 	uint32_t interval;
 	uint32_t handle;
-	Timer_Func func;
-	void *data;
+	sigc::slot<void> slot;
 };
 
 static uint64_t counter = 0;
@@ -47,8 +46,8 @@ uint64_t Timer_timeSincePowerOn() {
 		return ctr2 + (167999-v2)/168;
 }
 
-uint32_t Timer_Oneshot(uint32_t usec, void (*func)(void* data), void* data) {
-	Timer t = { 0, 0, func, data };
+uint32_t Timer_Oneshot(uint32_t usec, sigc::slot<void> const &slot) {
+	Timer t = { 0, 0, slot };
 	uint64_t time = Timer_timeSincePowerOn() + usec;
 	{
 		ISR_Guard isrguard;
@@ -58,8 +57,8 @@ uint32_t Timer_Oneshot(uint32_t usec, void (*func)(void* data), void* data) {
 	return t.handle;
 }
 
-uint32_t Timer_Repeating(uint32_t usec, Timer_Func func, void* data) {
-	Timer t = { usec, 0, func, data };
+uint32_t Timer_Repeating(uint32_t usec, sigc::slot<void> const &slot) {
+	Timer t = { usec, 0, slot };
 	uint64_t time = Timer_timeSincePowerOn() + usec;
 	{
 		ISR_Guard isrguard;
@@ -79,14 +78,13 @@ void Timer_Cancel(uint32_t handle) {
 	}
 }
 
-static void usleep_timer(void *data) {
-  uint32_t *d = (uint32_t*)data;
+static void usleep_timer(volatile uint32_t *d) {
   *d = 1;
 }
 
 int usleep(useconds_t usec) {
   volatile uint32_t d = 0;
-  Timer_Oneshot(usec, usleep_timer, (void*)&d);
+  Timer_Oneshot(usec, sigc::bind(sigc::ptr_fun(&usleep_timer), &d));
   while(!d) {
     __WFI();
   }
@@ -110,6 +108,6 @@ void SysTick_Handler() {
 				timers.insert(d);
 			}
 		}
-		d.second.func(d.second.data);
+		d.second.slot();
 	}
 }

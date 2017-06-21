@@ -137,30 +137,29 @@ void usb::Device::prepareConfigurationFetch(uint8_t id) {
 	urb.buffer_len = descriptordata.size();
 }
 
-void usb::Device::urbCompletion(int result, URB *u) {
-	assert(isRWPtr(u));
+void usb::Device::urbCompletion(int result) {
 	if (state == DescDevice8) {
-		if (result != 0 && u->buffer_received < 8) {
+		if (result != 0 && urb.buffer_received < 8) {
 			LogEvent("USBDevice: Resend, DescDevice8");
 			//we need to try all the sizes, some devices just
 			//emit STALL if we get it too small.
-			u->setup.wLength *= 2;
-			if (u->setup.wLength > 64)
-				u->setup.wLength = 8;
-			endpoints[0]->max_packet_length = u->setup.wLength;
-			descriptordata.resize(u->setup.wLength);
-			u->buffer = descriptordata.data();
-			u->buffer_len = descriptordata.size();
+			urb.setup.wLength *= 2;
+			if (urb.setup.wLength > 64)
+				urb.setup.wLength = 8;
+			endpoints[0]->max_packet_length = urb.setup.wLength;
+			descriptordata.resize(urb.setup.wLength);
+			urb.buffer = descriptordata.data();
+			urb.buffer_len = descriptordata.size();
 
 			//try again
-			usb::submitURB(u);
+			usb::submitURB(&urb);
 			return;
 		}
 	} else {
 		if (result != 0) {
 			LogEvent("USBDevice: Resend");
 			//try again
-			usb::submitURB(u);
+			usb::submitURB(&urb);
 			return;
 		}
 	}
@@ -169,22 +168,22 @@ void usb::Device::urbCompletion(int result, URB *u) {
 		LogEvent("USBDevice: Address");
 		//now that the address has been set on the device, we need
 		//to update our effective address
-		eaddress = u->setup.wValue;
+		eaddress = urb.setup.wValue;
 		//address has been handled, can activate another device.
 		usb::activationComplete();
 		//now the device is in "Address" mode. need to fetch the
 		//configurations and let a driver select one. then we go to "Configured"
-		u->setup.bmRequestType = 0x80;
-		u->setup.bRequest = 6;//GET DESCRIPTOR
-		u->setup.wValue = (1 << 8) | 0;//DEVICE descriptor type, index 0
-		u->setup.wIndex = 0;//no language
-		u->setup.wLength = 8; //for now, just pull 8. need to increase this for the full descriptor.
-		descriptordata.resize(u->setup.wLength);
-		u->buffer = descriptordata.data();
-		u->buffer_len = descriptordata.size();
+		urb.setup.bmRequestType = 0x80;
+		urb.setup.bRequest = 6;//GET DESCRIPTOR
+		urb.setup.wValue = (1 << 8) | 0;//DEVICE descriptor type, index 0
+		urb.setup.wIndex = 0;//no language
+		urb.setup.wLength = 8; //for now, just pull 8. need to increase this for the full descriptor.
+		descriptordata.resize(urb.setup.wLength);
+		urb.buffer = descriptordata.data();
+		urb.buffer_len = descriptordata.size();
 
 		state = DescDevice8;
-		usb::submitURB(u);
+		usb::submitURB(&urb);
 		break;
 	}
 	case DescDevice8: {
@@ -194,7 +193,7 @@ void usb::Device::urbCompletion(int result, URB *u) {
 		assert(isRWPtr(d));
 		endpoints[0]->max_packet_length = d->bMaxPacketSize0;
 
-		if (u->buffer_received < d->bLength) {
+		if (urb.buffer_received < d->bLength) {
 			urb.setup.wLength = d->bLength;
 			descriptordata.resize(d->bLength);
 			urb.buffer = descriptordata.data();
@@ -361,11 +360,11 @@ void usb::Device::urbCompletion(int result, URB *u) {
 		ISR_Guard g;
 
 		assert(isRWPtr(econfiguration));
+		uint16_t idx = urb.setup.wIndex;
 		auto iit = std::find_if(econfiguration->interfaces.begin(),
 				     econfiguration->interfaces.end(),
-				     [u](auto &i){
-						assert(isRWPtr(u));
-						return i.interfaceNumber == u->setup.wIndex;
+				     [idx](auto &intf){
+						return intf.interfaceNumber == idx;
 				     });
 		if (iit == econfiguration->interfaces.end()) {
 			assert(0);
@@ -376,7 +375,7 @@ void usb::Device::urbCompletion(int result, URB *u) {
 		updateEndpoints(intf);
 		assert(isRWPtr(intf.claimed));
 		intf.claimed->interfaceClaimed
-		  (u->setup.wIndex, intf.rAlternateSetting);
+		  (idx, intf.rAlternateSetting);
 
 		state = Configured;
 		configureInterfaces();

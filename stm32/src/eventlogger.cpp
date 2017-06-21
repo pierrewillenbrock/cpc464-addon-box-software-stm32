@@ -1,7 +1,7 @@
 
 #include <eventlogger.hpp>
 #include <array>
-#include <timer.h>
+#include <timer.hpp>
 #include <irq.h>
 
 struct LogInfo {

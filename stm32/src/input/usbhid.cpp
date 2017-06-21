@@ -242,9 +242,9 @@ private:
 	uint8_t input_endpoint;
 	uint8_t input_polling_interval;
 	uint8_t interfaceNumber;
-	void ctlurbCompletion(int result, usb::URB *u);
+	void ctlurbCompletion(int result);
 #ifdef SUPPORT_INPUTS
-	void irqurbCompletion(int result, usb::URB */*u*/);
+	void irqurbCompletion(int result);
 #endif
 	void parseReportDescriptor(uint8_t *data, size_t size);
 
@@ -723,17 +723,17 @@ void USBHIDDev::parseReportDescriptor(uint8_t *data, size_t size) {
 	}
 }
 
-void USBHIDDev::ctlurbCompletion(int result, usb::URB *u) {
+void USBHIDDev::ctlurbCompletion(int result) {
 	if (result != 0 && state != InitialReportRequests) {
 		//try again
-		usb::submitURB(u);
+		usb::submitURB(&ctlurb);
 		return;
 	}
 	switch(state) {
 	case FetchReportDescriptor: {
 		//yay, got the report!
 		//now, parse it.
-		parseReportDescriptor(ctldata.data(),u->buffer_received);
+		parseReportDescriptor(ctldata.data(),ctlurb.buffer_received);
 
 		Report *requestReport = NULL;
 		bool requestFeature = false;
@@ -965,7 +965,7 @@ void USBHIDDev::parseReport(std::vector<Report*> const &reports, std::vector<uin
 #endif
 
 #ifdef SUPPORT_INPUTS
-void USBHIDDev::irqurbCompletion(int result, usb::URB */*u*/) {
+void USBHIDDev::irqurbCompletion(int result) {
 	//this is called repeatedly by the usb subsystem.
 	if (result != 0)
 		return;

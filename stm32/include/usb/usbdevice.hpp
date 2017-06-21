@@ -76,7 +76,7 @@ namespace usb {
 		Configuration *econfiguration; ///< effective configuration
 		DriverDevice *claimed;
 
-		void urbCompletion(int result, URB *u);
+		void urbCompletion(int result);
 		void prepareStringFetch(uint8_t id);
 		void prepareConfigurationFetch(uint8_t id);
 

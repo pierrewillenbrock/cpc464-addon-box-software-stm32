@@ -1,18 +1,18 @@
 
-#include <block/msd.h>
+#include <block/msd.hpp>
 #include <vector>
 #include <deque>
 #include <stdlib.h>
 
 struct FS_priv {
-	Filesystem_Info *info;
+	FilesystemDriver *drv;
 };
 
 struct MSD_priv {
-	MSD_Info *info;
+	MSD *msd;
 	std::vector<uint8_t> mbr;
 	MSDReadCommand readCommand;
-	MSD_priv() : info(NULL) {}
+	MSD_priv() : msd(NULL) {}
 };
 
 static std::deque<FS_priv*> fss;
@@ -31,8 +31,7 @@ struct MSD_MSDOS_MBR {
 	uint16_t signature;
 } __attribute__((packed));
 
-static void MSD_MBR_read_cmpl(int res, MSDReadCommand *command) {
-	MSD_priv *p = container_of(command, MSD_priv, readCommand);
+static void MSD_MBR_read_cmpl(int res, MSD_priv *p) {
 	if (res == 0) {
 		MSD_MSDOS_MBR *msdos = (MSD_MSDOS_MBR*)p->mbr.data();
 		if (msdos->signature == 0xaa55) {
@@ -44,11 +43,11 @@ static void MSD_MBR_read_cmpl(int res, MSDReadCommand *command) {
 					continue;
 				//valid.
 				for(FS_priv* & fp : fss) {
-					fp->info->probe_partition(
+					fp->drv->probe_partition(
 						msdos->partitions[i].type,
 						msdos->partitions[i].first_lba,
 						msdos->partitions[i].num_blocks,
-						p->info);
+						p->msd);
 				}
 			}
 		}
@@ -56,23 +55,23 @@ static void MSD_MBR_read_cmpl(int res, MSDReadCommand *command) {
 	p->mbr.resize(0);
 }
 
-void MSD_Register(struct MSD_Info *info) {
+void MSD_Register(MSD *msd) {
 	MSD_priv *p = new MSD_priv;
-	p->info = info;
+	p->msd = msd;
 	p->mbr.resize(512);
 	msds.push_back(p);
 	p->readCommand.start_block = 0;
 	p->readCommand.num_blocks = 1;
 	p->readCommand.dst = p->mbr.data();
-	p->readCommand.completion = MSD_MBR_read_cmpl;
-	p->info->readBlocks(info->data, &p->readCommand);
+	p->readCommand.slot = sigc::bind(sigc::ptr_fun(&MSD_MBR_read_cmpl), p);
+	p->msd->readBlocks(&p->readCommand);
 }
 
-void MSD_Unregister(struct MSD_Info *info) {
+void MSD_Unregister(MSD *msd) {
 	for(FS_priv* & fp : fss)
-		fp->info->remove_msd(info);
+		fp->drv->remove_msd(msd);
 	for(auto it = msds.begin(); it != msds.end(); it++) {
-		if ((*it)->info == info) {
+		if ((*it)->msd == msd) {
 			MSD_priv *p = *it;
 			msds.erase(it);
 			delete p;
@@ -81,8 +80,8 @@ void MSD_Unregister(struct MSD_Info *info) {
 	}
 }
 
-void FS_Register(struct Filesystem_Info *info) {
+void FSDriver_Register(FilesystemDriver *drv) {
 	FS_priv *p = new FS_priv;
-	p->info = info;
+	p->drv = drv;
 	fss.push_back(p);
 }

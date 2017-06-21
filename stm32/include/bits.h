@@ -39,22 +39,6 @@ struct ARMv7M_FPUExceptionFrame{
 	(type *)( (char *)__mptr - offsetof(type,member) );})
 #endif
 
-struct PReadCommand {
-	void *ptr;
-	size_t len;
-	off_t offset;
-	void (*completion)(int /*result*/, int /*errno*/, struct PReadCommand */*command*/);
-	void *pdata;
-};
-
-struct PWriteCommand {
-	void const *ptr;
-	size_t len;
-	off_t offset;
-	void (*completion)(int /*result*/, int /*errno*/, struct PReadCommand */*command*/);
-	void *pdata;
-};
-
 #define isRAMPtr(p) ( ((uint32_t)(p)) >= 0x20000000 &&	\
 		     ((uint32_t)(p)) < 0x20000000 + 128*1024)
 #define isROMPtr(p) (((uint32_t)(p)) >= 0x08000000 &&		  \
@@ -64,12 +48,24 @@ struct PWriteCommand {
 #define isRPtr(p) ( isROMPtr(p) || isLOWMEMPtr(p) || isRAMPtr(p) )
 
 #ifdef __cplusplus
-extern "C" {
-#endif
+#include <sigc++/sigc++.h>
 
-int pread_nb(int fd, struct PReadCommand *command);
-int pwrite_nb(int fd, struct PWriteCommand *command);
+namespace aio {
+	struct PReadCommand {
+		void *ptr;
+		size_t len;
+		off_t offset;
+		sigc::slot<void(int /*result*/, int /*errno*/)> slot;
+	};
 
-#ifdef __cplusplus
+	struct PWriteCommand {
+		void const *ptr;
+		size_t len;
+		off_t offset;
+		sigc::slot<void(int /*result*/, int /*errno*/)> slot;
+	};
+
+	int pread(int fd, struct PReadCommand *command);
+	int pwrite(int fd, struct PWriteCommand *command);
 }
 #endif

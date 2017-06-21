@@ -2,6 +2,7 @@
 #pragma once
 
 #include <bsp/stm32f4xx.h>
+#include <bsp/core_cmFunc.h>
 
 static inline uint32_t interrupt_disable() {
 	uint32_t level = __get_BASEPRI();
@@ -25,6 +26,8 @@ public:
 	~ISR_Guard() { ISR_Enable(level); }
 };
 #endif
+
+#define swbarrier() asm volatile ("" ::: "memory")
 
 #ifdef __cplusplus
  extern "C" {

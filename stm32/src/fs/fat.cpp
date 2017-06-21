@@ -4,7 +4,7 @@
 #include <deque>
 #include <vector>
 #include <string.h>
-#include <block/msd.h>
+#include <block/msd.hpp>
 #include <fs/vfs.hpp>
 #include <lang.hpp>
 
@@ -17,7 +17,7 @@ namespace fat_priv {
 	struct Partition {
 		uint32_t first_block;
 		uint32_t num_blocks;
-		MSD_Info *msd;
+		MSD *msd;
 		uint32_t blockno;
 		std::vector<uint8_t> block;
 		MSDReadCommand read_command;
@@ -140,9 +140,7 @@ namespace fat_priv {
 	} __attribute__((packed));
 }
 
-static void fetchBlock_cmpl(int res, MSDReadCommand *command) {
-	fat_priv::Partition *p = container_of(command, fat_priv::Partition,
-					     read_command);
+static void fetchBlock_cmpl(int res, fat_priv::Partition *p) {
 	if (res != 0) {
 		p->blockno = ~0U;
 		return; //hmm. okay, well.
@@ -159,22 +157,22 @@ static void fetchBlock( fat_priv::Partition *priv, uint32_t block) {
 	priv->read_command.start_block = priv->first_block + block;
 	priv->read_command.num_blocks = 1;
 	priv->read_command.dst = priv->block.data();
-	priv->read_command.completion = fetchBlock_cmpl;
-	priv->msd->readBlocks(priv->msd->data, &priv->read_command);
+	priv->read_command.slot = sigc::bind(sigc::ptr_fun(&fetchBlock_cmpl),priv);
+	priv->msd->readBlocks(&priv->read_command);
 	while(*blocknop == ~0U) {
 		__WFI();
 	}
 }
 
-/* caller fills: read_command->num_blocks, dst, completion.
+/* caller fills: read_command->num_blocks, dst, slot.
 */
 /* pre-condition: none
-   post-condition: read_command->completion gets called once and only once
+   post-condition: read_command->slot gets called once and only once
  */
 static void fetchBlock_nb( fat_priv::Partition *priv, uint32_t block,
 			  MSDReadCommand *read_command) {
 	read_command->start_block = priv->first_block + block;
-	priv->msd->readBlocks(priv->msd->data, read_command);
+	priv->msd->readBlocks(read_command);
 }
 
 static uint32_t findNextCluster( fat_priv::Partition *priv, uint32_t cluster) {
@@ -185,60 +183,58 @@ static uint32_t findNextCluster( fat_priv::Partition *priv, uint32_t cluster) {
 struct Fat_FindNextCluster_Command {
 	fat_priv::Partition *priv;
 	uint32_t cluster;
-	void (*completion)(uint32_t cluster,
-			   Fat_FindNextCluster_Command *command);
+	sigc::slot<void(uint32_t cluster,
+			   Fat_FindNextCluster_Command *command)> slot;
 	uint32_t blockno;//init with ~0U
 	MSDReadCommand read_command;
 	char buf[512];
 };
 
 /* pre-condition: none
-   post-condition: command->completion gets called once and only once
+   post-condition: command->slot gets called once and only once
  */
-static void findNextCluster_nb_cmpl(int res, MSDReadCommand *command) {
-	Fat_FindNextCluster_Command *p = container_of(
-		command, Fat_FindNextCluster_Command, read_command);
+static void findNextCluster_nb_cmpl(int res, Fat_FindNextCluster_Command *p) {
 	if (res != 0) {
 		p->blockno = ~0U;
-		p->completion(~0U, p);
+		p->slot(~0U, p);
 	}
-	p->blockno = command->start_block - p->priv->first_block;
-	p->completion(
+	p->blockno = p->read_command.start_block - p->priv->first_block;
+	p->slot(
 		((uint32_t*)p->buf)[p->cluster%(512/4)],
 		p);
 }
 
-/* caller fills command->priv, cluster, completion. everything else gets used.
+/* caller fills command->priv, cluster, slot. everything else gets used.
  */
 /* pre-condition: none
-   post-condition: command->completion gets called once and only once
+   post-condition: command->slot gets called once and only once
  */
 static void findNextCluster_nb(Fat_FindNextCluster_Command *command) {
 	uint32_t blockno = command->cluster*4/512 +
 		command->priv->fat_start_block;
 	if (command->blockno == blockno) {
-		command->completion(
+		command->slot(
 			((uint32_t*)command->buf)[command->cluster%(512/4)],
 			command);
 		return;
 	}
 	command->read_command.num_blocks = 1;
 	command->read_command.dst = command->buf;
-	command->read_command.completion = findNextCluster_nb_cmpl;
+	command->read_command.slot = sigc::bind(sigc::ptr_fun(&findNextCluster_nb_cmpl),command);
 	fetchBlock_nb(command->priv, blockno, &command->read_command);
 }
 
 struct FatInode;
 
-struct FatInodeReadNb {
-	PReadCommand *command;
+struct AioFatInodeRead {
+	aio::PReadCommand *command;
 	char *ptr;
 	size_t len;
 	off_t offset;
 	int res;
 	uint32_t current_cluster;
 	uint32_t current_offset;
-	RefPtr<FatInode> inode;
+	RefPtr<FatInode> inode;//for keeping the reference alive for as long as the read takes
 	Fat_FindNextCluster_Command findnextcluster_command;
 };
 
@@ -262,13 +258,12 @@ struct FatInode : public vfs::Inode {
 		}
 	virtual _ssize_t pread(void *ptr, size_t len, off_t offset);
 	virtual _ssize_t pwrite(const void */*ptr*/, size_t /*len*/, off_t /*offset*/);
-	void pread_nb_cmpl1(FatInodeReadNb *p);
-	static void _pread_nb_cmpl1(uint32_t cluster,
-				    Fat_FindNextCluster_Command *command);
-	void pread_nb_cmpl2(int res, FatInodeReadNb *p);
-	static void _pread_nb_cmpl2(int res, MSDReadCommand *command);
-	virtual _ssize_t pread_nb(PReadCommand * command);
-	virtual _ssize_t pwrite_nb(PWriteCommand * command);
+
+	void aio_pread_helper(AioFatInodeRead *p);
+	void aio_pread_cmpl1(uint32_t cluster, AioFatInodeRead *p);
+	void aio_pread_cmpl2(int res, AioFatInodeRead *p);
+	virtual _ssize_t pread(aio::PReadCommand * command);
+	virtual _ssize_t pwrite(aio::PWriteCommand * command);
 };
 
 struct Fat16RootDirInode : public vfs::Inode {
@@ -412,10 +407,17 @@ struct FatDirInode : public FatInode {
 	}
 };
 
-static void FAT_probe_cmpl(int res, MSDReadCommand *command);
+class FatDriver : public FilesystemDriver {
+public:
+  virtual void probe_partition(uint32_t type, uint32_t first_block,
+			  uint32_t num_blocks, MSD *msd);
+  virtual void remove_msd(MSD *msd);
+};
 
-static void FAT_probe_partition(uint32_t type, uint32_t first_block,
-				uint32_t num_blocks, struct MSD_Info *msd) {
+static void FAT_probe_cmpl(int res, fat_priv::Partition *p);
+
+void FatDriver::probe_partition(uint32_t type, uint32_t first_block,
+				uint32_t num_blocks, MSD *msd) {
 	if (type != 0x01 && type != 0x03 && type != 0x06 && type != 0x0b &&
 	    type != 0x0c && type != 0x0e)
 		return;
@@ -431,13 +433,11 @@ static void FAT_probe_partition(uint32_t type, uint32_t first_block,
 	p->read_command.start_block = first_block;
 	p->read_command.num_blocks = 1;
 	p->read_command.dst = p->block.data();
-	p->read_command.completion = FAT_probe_cmpl;
-	p->msd->readBlocks(p->msd->data, &p->read_command);
+	p->read_command.slot = sigc::bind(sigc::ptr_fun(&FAT_probe_cmpl),p);
+	p->msd->readBlocks(&p->read_command);
 }
 
-static void FAT_probe_cmpl(int res, MSDReadCommand *command) {
-	fat_priv::Partition *p = container_of(command, fat_priv::Partition,
-					     read_command);
+static void FAT_probe_cmpl(int res, fat_priv::Partition *p) {
 	if (res != 0) {
 		for(auto it = fat_priv::partitions.begin();
 		    it != fat_priv::partitions.end();it++) {
@@ -491,7 +491,7 @@ static void FAT_probe_cmpl(int res, MSDReadCommand *command) {
 	}
 }
 
-static void FAT_remove_msd(struct MSD_Info *msd) {
+void FatDriver::remove_msd(MSD *msd) {
 	for(auto it = fat_priv::partitions.begin();
 	    it != fat_priv::partitions.end();) {
 		if ((*it)->msd == msd) {
@@ -504,13 +504,10 @@ static void FAT_remove_msd(struct MSD_Info *msd) {
 	}
 }
 
-static Filesystem_Info fat_info = {
-  .probe_partition = FAT_probe_partition,
-  .remove_msd = FAT_remove_msd
-};
+static FatDriver fatdriver;
 
 void FAT_Setup() {
-  FS_Register(&fat_info);
+  FSDriver_Register(&fatdriver);
 }
 
 _ssize_t FatInode::pread(void *ptr, size_t len, off_t offset) {
@@ -558,10 +555,10 @@ _ssize_t FatInode::pwrite(const void */*ptr*/, size_t /*len*/, off_t /*offset*/)
 }
 
 /* pre-condition: p is allocated using new.
-   post-condition: p is deallocated, command->completion has been called.
+   post-condition: p is deallocated, command->slot has been called.
 */
-void FatInode::pread_nb_cmpl2(int res, FatInodeReadNb *p) {
-	PReadCommand * command = p->command;
+void FatInode::aio_pread_cmpl2(int res, AioFatInodeRead *p) {
+	aio::PReadCommand * command = p->command;
 	if (res != 0) {
 		{
 			ISR_Guard g;
@@ -569,7 +566,7 @@ void FatInode::pread_nb_cmpl2(int res, FatInodeReadNb *p) {
 			current_offset = p->current_offset;
 		}
 		delete p;
-		command->completion(-1,EIO,command);
+		command->slot(-1,EIO);
 		return;
 	}
 	p->findnextcluster_command.blockno =
@@ -585,21 +582,14 @@ void FatInode::pread_nb_cmpl2(int res, FatInodeReadNb *p) {
 	p->offset += l2;
 	p->res += l2;
 	p->ptr += l2;
-	pread_nb_cmpl1(p);
-}
-
-void FatInode::_pread_nb_cmpl2(int res, MSDReadCommand *command) {
-	FatInodeReadNb *p = container_of(
-		command, FatInodeReadNb,
-		findnextcluster_command.read_command);
-	p->inode->pread_nb_cmpl2(res, p);
+	aio_pread_helper(p);
 }
 
 /* pre-condition: p is allocated using new.
-   post-condition: p is deallocated, command->completion has been called.
+   post-condition: p is deallocated, command->slot has been called.
 */
-void FatInode::pread_nb_cmpl1(FatInodeReadNb *p) {
-	PReadCommand * command = p->command;
+void FatInode::aio_pread_helper(AioFatInodeRead *p) {
+	aio::PReadCommand * command = p->command;
 	if (p->current_cluster == ~0U) {
 		p->current_offset = 0;
 		p->current_cluster = first_cluster;
@@ -609,7 +599,7 @@ void FatInode::pread_nb_cmpl1(FatInodeReadNb *p) {
 			current_offset = p->current_offset;
 		}
 		delete p;
-		command->completion(-1,EIO,command);
+		command->slot(-1,EIO);
 		return;
 	}
 
@@ -621,7 +611,7 @@ void FatInode::pread_nb_cmpl1(FatInodeReadNb *p) {
 			p->current_offset += priv->bytes_per_cluster;
 			p->findnextcluster_command.priv = priv;
 			p->findnextcluster_command.cluster = p->current_cluster;
-			p->findnextcluster_command.completion = _pread_nb_cmpl1;
+			p->findnextcluster_command.slot = sigc::hide(sigc::bind(sigc::mem_fun(this, &FatInode::aio_pread_cmpl1), p));
 			findNextCluster_nb(&p->findnextcluster_command);
 			return;
 		}
@@ -636,7 +626,7 @@ void FatInode::pread_nb_cmpl1(FatInodeReadNb *p) {
 			p->findnextcluster_command.read_command.num_blocks = 1;
 			p->findnextcluster_command.read_command.dst =
 				p->findnextcluster_command.buf;
-			p->findnextcluster_command.read_command.completion = _pread_nb_cmpl2;
+			p->findnextcluster_command.read_command.slot = sigc::bind(sigc::mem_fun(this, &FatInode::aio_pread_cmpl2), p);
 			fetchBlock_nb(priv, blockno, &p->findnextcluster_command.read_command);
 			return;
 		}
@@ -659,35 +649,31 @@ void FatInode::pread_nb_cmpl1(FatInodeReadNb *p) {
 		current_offset = p->current_offset;
 	}
 	delete p;
-	command->completion(res,0,command);
+	command->slot(res,0);
 	return;
 }
 
-void FatInode::_pread_nb_cmpl1(uint32_t cluster,
-			       Fat_FindNextCluster_Command *command) {
-	FatInodeReadNb *p = container_of(command, FatInodeReadNb,
-					 findnextcluster_command);
+void FatInode::aio_pread_cmpl1(uint32_t cluster,AioFatInodeRead *p) {
 	p->current_cluster = cluster;
-	p->inode->pread_nb_cmpl1(p);
+	aio_pread_helper(p);
 }
 
 /* pre-condition: none.
-   post-condition: command->completion has been called.
+   post-condition: command->slot has been called.
 */
-_ssize_t FatInode::pread_nb(PReadCommand * command) {
+_ssize_t FatInode::pread(aio::PReadCommand * command) {
 	if ((unsigned)command->offset >= size) {
-		command->completion(0,0,command);
+		command->slot(0,0);
 		return 0;
 	}
 	size_t len = command->len;
 	if (len + command->offset > size)
 		len = size - command->offset;
 	if (len == 0) {
-		command->completion(0,0,command);
+		command->slot(0,0);
 		return 0;
 	}
-	FatInodeReadNb *p = new FatInodeReadNb();
-	command->pdata = p;
+	AioFatInodeRead *p = new AioFatInodeRead();
 	p->ptr = (char*)command->ptr;
 	p->len = len;
 	p->offset = command->offset;
@@ -706,11 +692,11 @@ _ssize_t FatInode::pread_nb(PReadCommand * command) {
 		p->current_offset = 0;
 		p->current_cluster = first_cluster;
 	}
-	pread_nb_cmpl1(p);
+	aio_pread_helper(p);
 	return 0;
 }
 
-_ssize_t FatInode::pwrite_nb(PWriteCommand * /*command*/) {
+_ssize_t FatInode::pwrite(aio::PWriteCommand * /*command*/) {
 	errno = EINVAL;
 	return -1;
 }

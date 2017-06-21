@@ -19,7 +19,6 @@ namespace ui {
     bool m_mouseOver;
     sigc::signal<void,unsigned> m_onChanged;
     void pressedTimer();
-    static void _pressedTimer(void *data);
     void recalcNobPosition();
   public:
     ScrollBar(Container *parent);

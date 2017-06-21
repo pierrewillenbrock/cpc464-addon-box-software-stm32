@@ -9,9 +9,9 @@
 #include <bsp/stm32f4xx_exti.h>
 #include <bsp/stm32f4xx_syscfg.h>
 #include <irq.h>
-#include <timer.h>
-#include <block/msd.h>
-#include <block/sdio.h>
+#include <timer.hpp>
+#include <block/msd.hpp>
+#include <block/sdio.hpp>
 #include <deque>
 
 #include "sdcard_std.h"
@@ -171,54 +171,61 @@ void SDcard_Setup() {
 	NVIC_Init(&nvicinit);
 }
 
-static void SDcard_readSectors(void *unused, struct MSDReadCommand *command);
-static void SDcard_writeSectors(void *unused, struct MSDWriteCommand *command);
-
-static struct MSD_Info sdcard_info = {
-	0, 512, NULL, SDcard_readSectors, SDcard_writeSectors
+class SDCard : public MSD {
+public:
+	SDCard();
+	virtual void readBlocks(struct MSDReadCommand *command);
+	virtual void writeBlocks(struct MSDWriteCommand *command);
 };
 
-static void SDcard_init_power(void */*unused*/);
-static void SDcard_init_clock(void */*unused*/);
+SDCard::SDCard()
+: MSD(512)
+{}
+
+static SDCard sdcard;
+
+static void SDcard_init_power();
+static void SDcard_init_clock();
 static void SDcard_init_reset();
-static void SDcard_init_reset_cmpl(int result, struct SDCommand */*unused*/);
+static void SDcard_init_reset_cmpl(int result);
 static void SDcard_init_interface_condition();
-static void SDcard_init_interface_condition_cmpl(int result, struct SDCommand */*unused*/);
+static void SDcard_init_interface_condition_cmpl(int result);
 static void SDcard_init_sdcard_probe();
-static void SDcard_init_sdcard_probe_cmpl(int result, struct SDCommand */*unused*/);
+static void SDcard_init_sdcard_probe_cmpl(int result);
 static void SDcard_init_operation_condition();
-static void SDcard_init_operation_condition_cmpl(int result, struct SDCommand */*unused*/);
-static void SDcard_init_operation_condition_timer(void */*unused*/);
+static void SDcard_init_operation_condition_cmpl(int result);
+static void SDcard_init_operation_condition_timer();
 static void SDcard_init_get_CID();
-static void SDcard_init_get_CID_cmpl(int result, struct SDCommand */*unused*/);
+static void SDcard_init_get_CID_cmpl(int result);
 static void SDcard_init_set_addr();
-static void SDcard_init_set_addr_cmpl(int result, struct SDCommand */*unused*/);
+static void SDcard_init_set_addr_cmpl(int result);
 static void SDcard_init_get_CSD();
-static void SDcard_init_get_CSD_cmpl(int result, struct SDCommand */*unused*/);
+static void SDcard_init_get_CSD_cmpl(int result);
 static void SDcard_init_select_card();
-static void SDcard_init_select_card_cmpl(int result, struct SDCommand */*unused*/);
+static void SDcard_init_select_card_cmpl(int result);
 static void SDcard_init_get_SCR();
-static void SDcard_init_get_SCR_cmpl(int result, struct SDCommand */*unused*/);
+static void SDcard_init_get_SCR_cmpl(int result);
 static void SDcard_init_set_blocksize();
-static void SDcard_init_set_blocksize_cmpl(int result, struct SDCommand */*unused*/);
+static void SDcard_init_set_blocksize_cmpl(int result);
 static void SDcard_init_set_bus_width();
-static void SDcard_init_set_bus_width_cmpl(int result, struct SDCommand */*unused*/);
+static void SDcard_init_set_bus_width_cmpl(int result);
 static void SDcard_init_finish();
 
 static void SDcard_init_get_status();
-static void SDcard_init_get_status_cmpl(int result, struct SDCommand */*unused*/);
+static void SDcard_init_get_status_cmpl(int result);
 
-static void SDcard_init_power(void */*unused*/) {
+static void SDcard_init_power() {
 	//irq context: cannot wait here for long. need to drive it using irqs.
 	//switch pins back to AF
 	GPIO_ResetBits(SD_PWR_GPIO, SD_PWR_PIN);//switch it on
 
 	SDIO_PowerUp();
 
-	sdcard_timer_handle = Timer_Oneshot(10000, SDcard_init_clock, NULL);
+	sdcard_timer_handle = Timer_Oneshot
+	(10000, sigc::ptr_fun(&SDcard_init_clock));
 }
 
-static void SDcard_init_clock(void */*unused*/) {
+static void SDcard_init_clock() {
 	//irq context: cannot wait here for long. need to drive it using irqs.
 	SDIO_ClockEnable();
 
@@ -234,12 +241,12 @@ static void SDcard_init_reset() {
 	command.dataType = SDDataType::NoData;
 	command.retryCounter = 0;
 	command.data = NULL;
-	command.completion = SDcard_init_reset_cmpl;
+	command.slot = sigc::ptr_fun(&SDcard_init_reset_cmpl);
 
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_reset_cmpl(int result, struct SDCommand */*unused*/) {
+static void SDcard_init_reset_cmpl(int result) {
 	if (result == SDIO_SystemTimeout)
 		return;
 
@@ -255,12 +262,12 @@ static void SDcard_init_interface_condition() {
 	command.dataType = SDDataType::NoData;
 	command.retryCounter = 2;
 	command.data = NULL;
-	command.completion = SDcard_init_interface_condition_cmpl;
+	command.slot = sigc::ptr_fun(&SDcard_init_interface_condition_cmpl);
 
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_interface_condition_cmpl(int result, struct SDCommand */*unused*/) {
+static void SDcard_init_interface_condition_cmpl(int result) {
 	if (result != SDIO_OK &&
 	    result != SDIO_CommandTimeout) {
 		return;
@@ -288,12 +295,12 @@ static void SDcard_init_sdcard_probe() {
 	command.dataType = SDDataType::NoData;
 	command.retryCounter = 2;
 	command.data = NULL;
-	command.completion = SDcard_init_sdcard_probe_cmpl;
+	command.slot = sigc::ptr_fun(&SDcard_init_sdcard_probe_cmpl);
 
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_sdcard_probe_cmpl(int result, struct SDCommand */*unused*/) {
+static void SDcard_init_sdcard_probe_cmpl(int result) {
 	if (result != SDIO_OK) {
 		return;
 	}
@@ -314,12 +321,12 @@ static void SDcard_init_operation_condition() {
 	command.dataType = SDDataType::NoData;
 	command.retryCounter = 2;
 	command.data = NULL;
-	command.completion = SDcard_init_operation_condition_cmpl;
+	command.slot = sigc::ptr_fun(&SDcard_init_operation_condition_cmpl);
 
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_operation_condition_cmpl(int result, struct SDCommand */*unused*/) {
+static void SDcard_init_operation_condition_cmpl(int result) {
 	if (result != SDIO_OK &&
 	    result != SDIO_SystemTimeout &&
 	    result != SDIO_CommandTimeout &&
@@ -338,7 +345,8 @@ static void SDcard_init_operation_condition_cmpl(int result, struct SDCommand */
 		if (volt_retry > 10000)
 			return;
 
-		sdcard_timer_handle = Timer_Oneshot(10000, SDcard_init_operation_condition_timer, NULL);
+		sdcard_timer_handle = Timer_Oneshot
+		(10000, sigc::ptr_fun(&SDcard_init_operation_condition_timer));
 		return;
 	}
 
@@ -349,7 +357,8 @@ static void SDcard_init_operation_condition_cmpl(int result, struct SDCommand */
 		if (volt_retry > 10000)
 			return;
 
-		sdcard_timer_handle = Timer_Oneshot(10000, SDcard_init_operation_condition_timer, NULL);
+		sdcard_timer_handle = Timer_Oneshot
+		(10000, sigc::ptr_fun(&SDcard_init_operation_condition_timer));
 
 		return;
 	}
@@ -364,7 +373,7 @@ static void SDcard_init_operation_condition_cmpl(int result, struct SDCommand */
 	SDcard_init_get_CID();
 }
 
-static void SDcard_init_operation_condition_timer(void */*unused*/) {
+static void SDcard_init_operation_condition_timer() {
 	SDcard_init_operation_condition();
 }
 
@@ -376,12 +385,12 @@ static void SDcard_init_get_CID() {
 	command.dataType = SDDataType::NoData;
 	command.retryCounter = 2;
 	command.data = NULL;
-	command.completion = SDcard_init_get_CID_cmpl;
+	command.slot = sigc::ptr_fun(&SDcard_init_get_CID_cmpl);
 
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_get_CID_cmpl(int result, struct SDCommand */*unused*/) {
+static void SDcard_init_get_CID_cmpl(int result) {
 	if (result != SDIO_OK)
 		return;
 
@@ -404,12 +413,12 @@ static void SDcard_init_set_addr() {
 	command.dataType = SDDataType::NoData;
 	command.retryCounter = 2;
 	command.data = NULL;
-	command.completion = SDcard_init_set_addr_cmpl;
+	command.slot = sigc::ptr_fun(&SDcard_init_set_addr_cmpl);
 
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_set_addr_cmpl(int result, struct SDCommand */*unused*/) {
+static void SDcard_init_set_addr_cmpl(int result) {
 	if (result != SDIO_OK)
 		return;
 
@@ -434,12 +443,12 @@ static void SDcard_init_get_CSD() {
 	command.dataType = SDDataType::NoData;
 	command.retryCounter = 2;
 	command.data = NULL;
-	command.completion = SDcard_init_get_CSD_cmpl;
+	command.slot = sigc::ptr_fun(&SDcard_init_get_CSD_cmpl);
 
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_get_CSD_cmpl(int result, struct SDCommand */*unused*/) {
+static void SDcard_init_get_CSD_cmpl(int result) {
 	if (result != SDIO_OK)
 		return;
 
@@ -477,12 +486,12 @@ static void SDcard_init_select_card() {
 	command.dataType = SDDataType::NoData;
 	command.retryCounter = 2;
 	command.data = NULL;
-	command.completion = SDcard_init_select_card_cmpl;
+	command.slot = sigc::ptr_fun(&SDcard_init_select_card_cmpl);
 
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_select_card_cmpl(int result, struct SDCommand */*unused*/) {
+static void SDcard_init_select_card_cmpl(int result) {
 	if (result != SDIO_OK)
 		return;
 
@@ -498,12 +507,12 @@ static void SDcard_init_get_status() {
 	command.dataType = SDDataType::NoData;
 	command.retryCounter = 2;
 	command.data = NULL;
-	command.completion = SDcard_init_get_status_cmpl;
+	command.slot = sigc::ptr_fun(&SDcard_init_get_status_cmpl);
 
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_get_status_cmpl(int result, struct SDCommand */*unused*/) {
+static void SDcard_init_get_status_cmpl(int result) {
 	if (result != SDIO_OK) {
 		return;
 	}
@@ -524,12 +533,12 @@ static void SDcard_init_get_SCR() {
 	command.data = &card_SCR.d[0];
 	command.datalength = 8;
 	command.datablocksize = SDIO_DataBlockSize_8b;
-	command.completion = SDcard_init_get_SCR_cmpl;
+	command.slot = sigc::ptr_fun(&SDcard_init_get_SCR_cmpl);
 
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_get_SCR_cmpl(int result, struct SDCommand */*unused*/) {
+static void SDcard_init_get_SCR_cmpl(int result) {
 	if (result != SDIO_OK)
 		return;
 
@@ -550,12 +559,12 @@ static void SDcard_init_set_blocksize() {
 	command.dataType = SDDataType::NoData;
 	command.retryCounter = 2;
 	command.data = NULL;
-	command.completion = SDcard_init_set_blocksize_cmpl;
+	command.slot = sigc::ptr_fun(&SDcard_init_set_blocksize_cmpl);
 
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_set_blocksize_cmpl(int result, struct SDCommand */*unused*/) {
+static void SDcard_init_set_blocksize_cmpl(int result) {
 	if (result != SDIO_OK)
 		return;
 
@@ -577,12 +586,12 @@ static void SDcard_init_set_bus_width() {
 	command.dataType = SDDataType::NoData;
 	command.retryCounter = 2;
 	command.data = NULL;
-	command.completion = SDcard_init_set_bus_width_cmpl;
+	command.slot = sigc::ptr_fun(&SDcard_init_set_bus_width_cmpl);
 
 	SDIO_Command(&command);
 }
 
-static void SDcard_init_set_bus_width_cmpl(int result, struct SDCommand */*unused*/) {
+static void SDcard_init_set_bus_width_cmpl(int result) {
 	if (result != SDIO_OK)
 		return;
 
@@ -595,13 +604,13 @@ static void SDcard_init_finish() {
 	//card init done.
 	if (card_CSD.v1.CSD_structure == 0) {
 		//v1.0
-		sdcard_info.size = (card_CSD.v1.device_size+1)*(4 << card_CSD.v1.device_size_multiplier)*(1 << card_CSD.v1.max_read_data_block_length);
+		sdcard.size = (card_CSD.v1.device_size+1)*(4 << card_CSD.v1.device_size_multiplier)*(1 << card_CSD.v1.max_read_data_block_length);
 	} else if (card_CSD.v1.CSD_structure == 1) {
-		sdcard_info.size = (card_CSD.v2.device_size+1)*512;
+		sdcard.size = (card_CSD.v2.device_size+1)*512;
 	} else {
 		return; //hmm. this card appears to be newer than we support.
 	}
-	MSD_Register(&sdcard_info);
+	MSD_Register(&sdcard);
 }
 
 static void SDcard_deinit() {
@@ -610,7 +619,7 @@ static void SDcard_deinit() {
 
 	SDIO_PowerDown();
 
-	MSD_Unregister(&sdcard_info);
+	MSD_Unregister(&sdcard);
 }
 
 void EXTI9_5_IRQHandler() {
@@ -632,8 +641,8 @@ void EXTI9_5_IRQHandler() {
 			EXTI_Init(&extiinit);
 
 			//init the card here.
-			sdcard_timer_handle = Timer_Oneshot(100, SDcard_init_power,
-						     NULL);
+			sdcard_timer_handle = Timer_Oneshot
+			(100, sigc::ptr_fun(&SDcard_init_power));
 			//notify anyone needing to know the card appeared.
 
 			if (GPIO_ReadInputDataBit(SD_CD_GPIO, SD_CD_PIN) == Bit_SET) {
@@ -671,9 +680,9 @@ void EXTI9_5_IRQHandler() {
 }
 
 static void SDcard_read_sectors2(struct MSDReadCommand *command);
-static void SDcard_read_sectors2_cmpl(int result, struct SDCommand *sdcommand);
+static void SDcard_read_sectors2_cmpl(int result, struct MSDReadCommand *command);
 static void SDcard_read_sectors3(struct MSDReadCommand *command);
-static void SDcard_read_sectors3_cmpl(int result, struct SDCommand *sdcommand);
+static void SDcard_read_sectors3_cmpl(int result, struct MSDReadCommand *command);
 static void SDcard_write_sectors2(struct MSDWriteCommand *command);
 
 struct SDcard_rwCommand{
@@ -701,7 +710,7 @@ static void SDcard_dequeueNextCommand() {
 	}
 }
 
-static void SDcard_readSectors(void */*unused*/, struct MSDReadCommand *command) {
+void SDCard::readBlocks(struct MSDReadCommand *command) {
 	ISR_Guard g;
 	if (currentCommand.readcmd || currentCommand.writecmd) {
 		SDcard_rwCommand c = {command , NULL};
@@ -732,24 +741,23 @@ static void SDcard_read_sectors2(struct MSDReadCommand *command) {
 	command->sdcard.sdcommand.datalength = 512*command->num_blocks;
 	command->sdcard.sdcommand.datablocksize = SDIO_DataBlockSize_512b;
 	command->sdcard.sdcommand.dataType = SDDataType::DataToSDIO;
-	command->sdcard.sdcommand.completion = SDcard_read_sectors2_cmpl;
+	command->sdcard.sdcommand.slot = sigc::bind(sigc::ptr_fun(&SDcard_read_sectors2_cmpl), command);
 
 	SDIO_Command(&command->sdcard.sdcommand);
 }
 
-static void SDcard_read_sectors2_cmpl(int result, struct SDCommand *sdcommand) {
-	struct MSDReadCommand *command = container_of(sdcommand, struct MSDReadCommand, sdcard.sdcommand);
+static void SDcard_read_sectors2_cmpl(int result, struct MSDReadCommand *command) {
 	if (result != SDIO_OK) {
 		if (result == SDIO_CommandTimeout)
-			command->completion(ETIMEDOUT, command);
+			command->slot(ETIMEDOUT);
 		else if (result == SDIO_CSError) {
 			if (command->sdcard.sdcommand.response[0] &
 			    SD_CS_ADDR_OUT_OF_RANGE)
-				command->completion(ENODATA, command); //for write, ENOSPC
+				command->slot(ENODATA); //for write, ENOSPC
 			else
-				command->completion(EIO, command);
+				command->slot(EIO);
 		} else {
-			command->completion(EIO, command);
+			command->slot(EIO);
 		}
 		SDcard_dequeueNextCommand();
 		return;
@@ -761,7 +769,7 @@ static void SDcard_read_sectors2_cmpl(int result, struct SDCommand *sdcommand) {
 		return;
 	}
 
-	command->completion(0, command);
+	command->slot(0);
 	SDcard_dequeueNextCommand();
 }
 
@@ -773,27 +781,26 @@ static void SDcard_read_sectors3(struct MSDReadCommand *command) {
 	command->sdcard.sdcommand.dataType = SDDataType::NoData;
 	command->sdcard.sdcommand.retryCounter = 2;
 	command->sdcard.sdcommand.data = NULL;
-	command->sdcard.sdcommand.completion = SDcard_read_sectors3_cmpl;
+	command->sdcard.sdcommand.slot = sigc::bind(sigc::ptr_fun(&SDcard_read_sectors3_cmpl), command);
 
 	SDIO_Command(&command->sdcard.sdcommand);
 }
 
-static void SDcard_read_sectors3_cmpl(int result, struct SDCommand *sdcommand) {
-	struct MSDReadCommand *command = container_of(sdcommand, struct MSDReadCommand, sdcard.sdcommand);
+static void SDcard_read_sectors3_cmpl(int result, struct MSDReadCommand *command) {
 	if (result != SDIO_OK) {
 		if (result == SDIO_CommandTimeout)
-			command->completion(ETIMEDOUT, command);
+			command->slot(ETIMEDOUT);
 		else
-			command->completion(EIO, command);
+			command->slot(EIO);
 		SDcard_dequeueNextCommand();
 		return;
 	}
 
-	command->completion(0, command);
+	command->slot(0);
 	SDcard_dequeueNextCommand();
 }
 
-static void SDcard_writeSectors(void */*unused*/, struct MSDWriteCommand *command) {
+void SDCard::writeBlocks(struct MSDWriteCommand *command) {
 	ISR_Guard g;
 	if (currentCommand.readcmd || currentCommand.writecmd) {
 		SDcard_rwCommand c = { NULL, command };
@@ -805,6 +812,6 @@ static void SDcard_writeSectors(void */*unused*/, struct MSDWriteCommand *comman
 }
 
 static void SDcard_write_sectors2(struct MSDWriteCommand *command) {
-	command->completion(-1, command);
+	command->slot(-1);
 	SDcard_dequeueNextCommand();
 }

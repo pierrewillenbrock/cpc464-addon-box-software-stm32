@@ -25,11 +25,11 @@ namespace vfs {
 			errno = EINVAL;
 			return -1;
 		}
-		virtual _ssize_t pread_nb(PReadCommand * /*command*/) {
+		virtual _ssize_t pread(aio::PReadCommand * /*command*/) {
 			errno = EINVAL;
 			return -1;
 		}
-		virtual _ssize_t pwrite_nb(PWriteCommand * /*command*/) {
+		virtual _ssize_t pwrite(aio::PWriteCommand * /*command*/) {
 			errno = EINVAL;
 			return -1;
 		}

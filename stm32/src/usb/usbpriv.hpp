@@ -2,6 +2,7 @@
 #pragma once
 
 #include <bsp/stm32f4xx.h>
+#include <sigc++/sigc++.h>
 
 namespace usb {
 	struct URB;
@@ -18,10 +19,9 @@ namespace usb {
 	uint8_t getNextAddress();
 	void registerDevice(Device *device);
 	void unregisterDevice(Device *device);
-	void queueDeviceActivation(void (*activate)(void*data),void *data);
+	void queueDeviceActivation(sigc::slot<void> const &slot);
 	void killEndpoint(Endpoint *endpoint);
 	unsigned int frameTimeRemaining();
-
 }
 
 static OTG_Core_TypeDef * otgc = OTGF_CORE;

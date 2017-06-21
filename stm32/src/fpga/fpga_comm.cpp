@@ -1,5 +1,5 @@
 
-#include <fpga/fpga_comm.h>
+#include <fpga/fpga_comm.hpp>
 #include <fpga/layout.h>
 #include <bsp/stm32f4xx_gpio.h>
 #include <bsp/stm32f4xx_spi.h>
@@ -194,15 +194,12 @@ struct FPGAComm_FPGAComm_Command {
 	FPGAComm_Command command;
 };
 
-static void FPGAComm_Completion(int result, FPGAComm_Command *command) {
+static void FPGAComm_Completion(int result, FPGAComm_FPGAComm_Command *c) {
 	if (result != 0) {
-		FPGAComm_ReadWriteCommand(command);
+		FPGAComm_ReadWriteCommand(&c->command);
 		return;
 	}
-	assert(isRPtr(command));
-	FPGAComm_FPGAComm_Command *c = container_of(command, FPGAComm_FPGAComm_Command, command);
 	c->completed = 1;
-	command->completion = NULL;
 }
 
 void FPGAComm_CopyFromToFPGA(void *dest, uint32_t fpga, void const *src, size_t n) {
@@ -214,7 +211,7 @@ void FPGAComm_CopyFromToFPGA(void *dest, uint32_t fpga, void const *src, size_t 
 	comm.command.length = n;
 	comm.command.read_data = dest;
 	comm.command.write_data = src;
-	comm.command.completion = FPGAComm_Completion;
+	comm.command.slot = sigc::bind(sigc::ptr_fun(&FPGAComm_Completion),&comm);
 
 	FPGAComm_ReadWriteCommand(&comm.command);
 	uint32_t volatile *t = (uint32_t volatile *)&comm.completed;
@@ -231,12 +228,10 @@ void FPGAComm_CopyFromFPGA(void *dest, uint32_t src, size_t n) {
 	FPGAComm_CopyFromToFPGA(dest, src, NULL, n);
 }
 
-static void(* FPGAComm_IRQHandlers[8])(void*data) = {0,0,0,0,0,0,0,0};
-static void *FPGAComm_IRQData[8];
+static sigc::signal<void> FPGAComm_IRQHandlers[8];
 
-void FPGAComm_SetIRQHandler(unsigned int num, void (*handler)(void*), void *data) {
-	FPGAComm_IRQHandlers[num] = handler;
-	FPGAComm_IRQData[num] = data;
+sigc::signal<void> &FPGAComm_IRQHandler(unsigned int num) {
+	return FPGAComm_IRQHandlers[num];
 }
 
 static uint8_t FPGAComm_IRQ_mask = 0;
@@ -272,19 +267,19 @@ void FPGAComm_DisableIRQs_nb(unsigned int mask, FPGAComm_Command *command) {
 static bool FPGAComm_IRQFetchInProgress = false;
 static bool FPGAComm_IRQSeenAgain = false;
 static uint8_t FPGAComm_IRQ_status;
-static void FPGAComm_IRQFetch_Completion(int result, FPGAComm_Command *command);
+static void FPGAComm_IRQFetch_Completion(int result);
 static FPGAComm_Command FPGAComm_IRQFetch_Command = {
 	.address = FPGA_INT_IRQSTS,
 	.length = 1,
 	.read_data = &FPGAComm_IRQ_status,
 	.write_data = NULL,
-	.completion = FPGAComm_IRQFetch_Completion,
+	.slot = sigc::ptr_fun(&FPGAComm_IRQFetch_Completion),
 	FPGAComm_Command_Private_Init,
 };
 
-static void FPGAComm_IRQFetch_Completion(int result, FPGAComm_Command *command) {
+static void FPGAComm_IRQFetch_Completion(int result) {
 	if (result != 0) {
-		FPGAComm_ReadWriteCommand(command);
+		FPGAComm_ReadWriteCommand(&FPGAComm_IRQFetch_Command);
 		return;
 	}
 	uint8_t status;
@@ -300,8 +295,8 @@ static void FPGAComm_IRQFetch_Completion(int result, FPGAComm_Command *command) 
 		status = FPGAComm_IRQ_status;
 	}
 	for(unsigned i = 0; i < 7; i++) {
-		if ((status & (1<<i)) && FPGAComm_IRQHandlers[i])
-			FPGAComm_IRQHandlers[i](FPGAComm_IRQData[i]);
+		if (status & (1<<i))
+			FPGAComm_IRQHandlers[i]();
 	}
 }
 
@@ -326,8 +321,8 @@ void SPI_RX_DMA_IRQHandler() {
 		//nss
 		GPIO_SetBits(SPI_NSS_GPIO, SPI_NSS_PIN);
 
-		if (fpga_current_command->completion)
-			fpga_current_command->completion(-1, fpga_current_command);
+		if (fpga_current_command->slot)
+			fpga_current_command->slot(-1);
 
 		SPI_I2S_ITConfig(SPI_DEV, SPI_I2S_IT_ERR, DISABLE);
 		DMA_ITConfig(SPI_RX_DMA, DMA_IT_TE | DMA_IT_TC, DISABLE);
@@ -351,8 +346,8 @@ void SPI_RX_DMA_IRQHandler() {
 			//nss
 			GPIO_SetBits(SPI_NSS_GPIO, SPI_NSS_PIN);
 
-			if (fpga_current_command->completion)
-				fpga_current_command->completion(0, fpga_current_command);
+			if (fpga_current_command->slot)
+				fpga_current_command->slot(0);
 		}
 	}
 
@@ -383,8 +378,8 @@ void SPI_IRQHandler() {
 	//nss
 	GPIO_SetBits(SPI_NSS_GPIO, SPI_NSS_PIN);
 
-	if (fpga_current_command->completion)
-		fpga_current_command->completion(-1, fpga_current_command);
+	if (fpga_current_command->slot)
+		fpga_current_command->slot(-1);
 
 	ISR_Guard g;
 	fpga_current_command = NULL;

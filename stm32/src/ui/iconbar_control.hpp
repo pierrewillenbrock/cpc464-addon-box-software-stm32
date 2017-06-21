@@ -44,7 +44,7 @@ private:
   unsigned disk_motor_anim;
   uint32_t diskMotor_timer;
 
-  static void diskMotorTimeout(void *data);
+  void diskMotorTimeout();
 
   void showHint(int iconno, unsigned int x);
 public:

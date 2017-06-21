@@ -427,7 +427,7 @@ int _fstat_r(struct _reent */*r*/, int file, struct stat *st) {
 	return fds[file]->dentry->inode->fstat(st);
 }
 
-int pread_nb(int file, struct PReadCommand *command) {
+int aio::pread(int file, struct aio::PReadCommand *command) {
 	ISR_Guard isrguard;
 	if (file == -1 || (unsigned)file >= fds.size()) {
 		errno = EBADF;
@@ -440,10 +440,10 @@ int pread_nb(int file, struct PReadCommand *command) {
 		return -1;
 	}
 
-	return fds[file]->dentry->inode->pread_nb(command);
+	return fds[file]->dentry->inode->pread(command);
 }
 
-int pwrite_nb(int file, struct PWriteCommand *command) {
+int aio::pwrite(int file, struct aio::PWriteCommand *command) {
 	ISR_Guard isrguard;
 	if (file == -1 || (unsigned)file >= fds.size()) {
 		errno = EBADF;
@@ -456,7 +456,7 @@ int pwrite_nb(int file, struct PWriteCommand *command) {
 		return -1;
 	}
 
-	return fds[file]->dentry->inode->pwrite_nb(command);
+	return fds[file]->dentry->inode->pwrite(command);
 }
 
 struct RealDIR {

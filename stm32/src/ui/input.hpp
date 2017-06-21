@@ -24,7 +24,6 @@ namespace ui {
     uint32_t m_pressedTimer;
     bool m_mouseOver;
     void pressedTimer();
-    static void _pressedTimer(void *data);
     void doValueChange();
   public:
     enum Flags {

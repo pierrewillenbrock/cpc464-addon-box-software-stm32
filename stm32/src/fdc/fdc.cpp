@@ -1,9 +1,9 @@
 
 #include <fdc/fdc.h>
 
-#include <fpga/fpga_comm.h>
+#include <fpga/fpga_comm.hpp>
 #include <fpga/layout.h>
-#include <timer.h>
+#include <timer.hpp>
 #include <fdc/dsk.hpp>
 
 #include <string.h>
@@ -59,7 +59,7 @@ static uint8_t driveAccessCount[4] = {0,0,0,0};
 
 static RefPtr<dsk::Disk> images[4];
 
-static void driveStatusCompletion(int result, struct FPGAComm_Command */*unused*/) {
+static void driveStatusCompletion(int result) {
 	driveStatusState = 0;
 	if (result != 0) {
 		return;
@@ -74,7 +74,7 @@ static void driveStatusCompletion(int result, struct FPGAComm_Command */*unused*
 	}
 }
 
-static void driveStatusTimer(void */*unused*/) {
+static void driveStatusTimer() {
 	for(unsigned i = 0; i < 4; i++) {
 		if (driveAccessCount[i] > 0) {
 			driveAccessCount[i]--;
@@ -96,7 +96,7 @@ static void driveStatusTimer(void */*unused*/) {
 	driveStatusFPGACommand.length = sizeof(fddInfoBlock);
 	driveStatusFPGACommand.read_data = &fddInfoBlock;
 	driveStatusFPGACommand.write_data = NULL;
-	driveStatusFPGACommand.completion = driveStatusCompletion;
+	driveStatusFPGACommand.slot = sigc::ptr_fun(&driveStatusCompletion);
 	driveStatusState = 1;
 	FPGAComm_ReadWriteCommand(&driveStatusFPGACommand);
 }
@@ -119,8 +119,7 @@ static RefPtr<dsk::Disk> fdcirq_dskimage;
 
 static uint8_t sectorbuf[2048];
 
-static void fdcirq_FPGACommCompletion(int result,
-				      struct FPGAComm_Command *unused);
+static void fdcirq_FPGACommCompletion(int result);
 /*
   communication protocol between stm32 and fdc frontend:
   * frontend pulls command.valid high, which also results in an irq. the
@@ -136,8 +135,7 @@ static void fdcirq_FPGACommCompletion(int result,
   * stm32 reads memory and pulls response.valid low when it is done, which
     clears irq.
 */
-static void fdcirq_DiskFindSectorCompletion(RefPtr<dsk::DiskSector> sector,
-					   dsk::DiskFindSectorCommand */*command*/) {
+static void fdcirq_DiskFindSectorCompletion(RefPtr<dsk::DiskSector> sector) {
 	driveAccessCount[fdcirq_command.driveUnit] = 10;
 	switch (fdcirq_state) {
 	case SECTOR_FETCH:
@@ -165,8 +163,8 @@ static void fdcirq_DiskFindSectorCompletion(RefPtr<dsk::DiskSector> sector,
 				fdcirq_FPGACommand2.length = 4;
 				fdcirq_FPGACommand2.read_data = NULL;
 				fdcirq_FPGACommand2.write_data = &sectorbuf;
-				//no completion needed
-				fdcirq_FPGACommand2.completion = NULL;
+				//no slot needed
+				fdcirq_FPGACommand2.slot = sigc::slot<void(int)>();
 				FPGAComm_ReadWriteCommand(&fdcirq_FPGACommand2);
 
 				fdcirq_response.reserved = 0;
@@ -182,10 +180,10 @@ static void fdcirq_DiskFindSectorCompletion(RefPtr<dsk::DiskSector> sector,
 			fdcirq_FPGACommand.length = 1;
 			fdcirq_FPGACommand.read_data = NULL;
 			fdcirq_FPGACommand.write_data = &fdcirq_response;
-			fdcirq_FPGACommand.completion = NULL;
+			fdcirq_FPGACommand.slot = sigc::slot<void(int)>();
 			FPGAComm_ReadWriteCommand(&fdcirq_FPGACommand);
 
-			fdcirq_endisable_FPGACommand.completion = NULL;
+			fdcirq_endisable_FPGACommand.slot = sigc::slot<void(int)>();
 			FPGAComm_EnableIRQs_nb(0x01, &fdcirq_endisable_FPGACommand);
 			fdcirq_state = WAIT_TRANSFERDONE;
 			break;
@@ -208,8 +206,8 @@ static void fdcirq_DiskFindSectorCompletion(RefPtr<dsk::DiskSector> sector,
 				fdcirq_FPGACommand2.length = sector->size;
 				fdcirq_FPGACommand2.read_data = NULL;
 				fdcirq_FPGACommand2.write_data = &sectorbuf;
-				//no completion needed
-				fdcirq_FPGACommand2.completion = NULL;
+				//no slot needed
+				fdcirq_FPGACommand2.slot = sigc::slot<void(int)>();
 				FPGAComm_ReadWriteCommand(&fdcirq_FPGACommand2);
 
 				fdcirq_response.reserved = 0;
@@ -225,10 +223,10 @@ static void fdcirq_DiskFindSectorCompletion(RefPtr<dsk::DiskSector> sector,
 			fdcirq_FPGACommand.length = 1;
 			fdcirq_FPGACommand.read_data = NULL;
 			fdcirq_FPGACommand.write_data = &fdcirq_response;
-			fdcirq_FPGACommand.completion = NULL;
+			fdcirq_FPGACommand.slot = sigc::slot<void(int)>();
 			FPGAComm_ReadWriteCommand(&fdcirq_FPGACommand);
 
-			fdcirq_endisable_FPGACommand.completion = NULL;
+			fdcirq_endisable_FPGACommand.slot = sigc::slot<void(int)>();
 			FPGAComm_EnableIRQs_nb(0x01, &fdcirq_endisable_FPGACommand);
 			fdcirq_state = WAIT_TRANSFERDONE;
 			break;
@@ -243,18 +241,17 @@ static void fdcirq_DiskFindSectorCompletion(RefPtr<dsk::DiskSector> sector,
 	}
 }
 
-static void fdcirq_FPGACommCompletion(int result,
-				      struct FPGAComm_Command *command) {
+static void fdcirq_FPGACommCompletion(int result) {
 	if (result != 0) {
 		//this is bad. retry.
-		FPGAComm_ReadWriteCommand(command);
+		FPGAComm_ReadWriteCommand(&fdcirq_FPGACommand);
 		return;
 	}
 	driveAccessCount[fdcirq_command.driveUnit] = 10;
 	switch (fdcirq_state) {
 	case COMMAND_FETCH: //we just fetched our fdcirq_command.
 		if(!fdcirq_command.valid) {
-			fdcirq_endisable_FPGACommand.completion = NULL;
+			fdcirq_endisable_FPGACommand.slot = sigc::slot<void(int)>();
 			FPGAComm_EnableIRQs_nb(0x01, &fdcirq_endisable_FPGACommand);
 			fdcirq_state = IDLE;
 			return;
@@ -279,10 +276,10 @@ static void fdcirq_FPGACommCompletion(int result,
 			fdcirq_FPGACommand.length = 1;
 			fdcirq_FPGACommand.read_data = NULL;
 			fdcirq_FPGACommand.write_data = &fdcirq_response;
-			fdcirq_FPGACommand.completion = NULL;
+			fdcirq_FPGACommand.slot = sigc::slot<void(int)>();
 			FPGAComm_ReadWriteCommand(&fdcirq_FPGACommand);
 
-			fdcirq_endisable_FPGACommand.completion = NULL;
+			fdcirq_endisable_FPGACommand.slot = sigc::slot<void(int)>();
 			FPGAComm_EnableIRQs_nb(0x01, &fdcirq_endisable_FPGACommand);
 			fdcirq_state = WAIT_TRANSFERDONE;
 		} else {
@@ -307,8 +304,8 @@ static void fdcirq_FPGACommCompletion(int result,
 					fdcirq_command.N;
 				fdcirq_findsectorcommand.deleted = false;
 				fdcirq_findsectorcommand.find_any = true;
-				fdcirq_findsectorcommand.completion =
-					fdcirq_DiskFindSectorCompletion;
+				fdcirq_findsectorcommand.slot =
+					sigc::ptr_fun(&fdcirq_DiskFindSectorCompletion);
 				fdcirq_state = SECTOR_FETCH;
 				fdcirq_dskimage->findSector
 					(&fdcirq_findsectorcommand);
@@ -330,8 +327,8 @@ static void fdcirq_FPGACommCompletion(int result,
 					fdcirq_command.N;
 				fdcirq_findsectorcommand.deleted = false;
 				fdcirq_findsectorcommand.find_any = false;
-				fdcirq_findsectorcommand.completion =
-					fdcirq_DiskFindSectorCompletion;
+				fdcirq_findsectorcommand.slot =
+					sigc::ptr_fun(&fdcirq_DiskFindSectorCompletion);
 				fdcirq_state = SECTOR_FETCH;
 				fdcirq_dskimage->findSector
 					(&fdcirq_findsectorcommand);
@@ -350,9 +347,9 @@ static void fdcirq_FPGACommCompletion(int result,
 			fdcirq_FPGACommand.length = 1;
 			fdcirq_FPGACommand.read_data = NULL;
 			fdcirq_FPGACommand.write_data = &fdcirq_response;
-			fdcirq_FPGACommand.completion = NULL;
+			fdcirq_FPGACommand.slot = sigc::slot<void(int)>();
 			FPGAComm_ReadWriteCommand(&fdcirq_FPGACommand);
-			fdcirq_endisable_FPGACommand.completion = NULL;
+			fdcirq_endisable_FPGACommand.slot = sigc::slot<void(int)>();
 			FPGAComm_EnableIRQs_nb(0x01, &fdcirq_endisable_FPGACommand);
 			fdcirq_state = IDLE;
 		} else {
@@ -367,9 +364,9 @@ static void fdcirq_FPGACommCompletion(int result,
 				fdcirq_FPGACommand.length = 1;
 				fdcirq_FPGACommand.read_data = NULL;
 				fdcirq_FPGACommand.write_data = &fdcirq_response;
-				fdcirq_FPGACommand.completion = NULL;
+				fdcirq_FPGACommand.slot = sigc::slot<void(int)>();
 				FPGAComm_ReadWriteCommand(&fdcirq_FPGACommand);
-				fdcirq_endisable_FPGACommand.completion = NULL;
+				fdcirq_endisable_FPGACommand.slot = sigc::slot<void(int)>();
 				FPGAComm_EnableIRQs_nb(0x01, &fdcirq_endisable_FPGACommand);
 				fdcirq_state = IDLE;
 				break;
@@ -385,31 +382,31 @@ static void fdcirq_FPGACommCompletion(int result,
 	}
 }
 
-static void FDC_IRQHandler(void */*unused*/) {
+static void FDC_IRQHandler() {
 	switch(fdcirq_state) {
 	case IDLE:
 		//first, queue the disable command so we can retrigger the irq when we reenable and it is asserted again already.
-		fdcirq_endisable_FPGACommand.completion = NULL;
+		fdcirq_endisable_FPGACommand.slot = sigc::slot<void(int)>();
 		FPGAComm_DisableIRQs_nb(0x01, &fdcirq_endisable_FPGACommand);
 		//need to fetch the command
 		fdcirq_FPGACommand.address = FPGA_CPC_FDC_INFOBLK;
 		fdcirq_FPGACommand.length = sizeof(fdcirq_command);
 		fdcirq_FPGACommand.read_data = &fdcirq_command;
 		fdcirq_FPGACommand.write_data = NULL;
-		fdcirq_FPGACommand.completion = fdcirq_FPGACommCompletion;
+		fdcirq_FPGACommand.slot = sigc::ptr_fun(&fdcirq_FPGACommCompletion);
 		fdcirq_state = COMMAND_FETCH;
 		FPGAComm_ReadWriteCommand(&fdcirq_FPGACommand);
 		break;
 	case WAIT_TRANSFERDONE:
 		//first, queue the disable command so we can retrigger the irq when we reenable and it is asserted again already.
-		fdcirq_endisable_FPGACommand.completion = NULL;
+		fdcirq_endisable_FPGACommand.slot = sigc::slot<void(int)>();
 		FPGAComm_DisableIRQs_nb(0x01, &fdcirq_endisable_FPGACommand);
 		//need to fetch the command. contains final register states.
 		fdcirq_FPGACommand.address = FPGA_CPC_FDC_INFOBLK;
 		fdcirq_FPGACommand.length = sizeof(fdcirq_command);
 		fdcirq_FPGACommand.read_data = &fdcirq_command_final;
 		fdcirq_FPGACommand.write_data = NULL;
-		fdcirq_FPGACommand.completion = fdcirq_FPGACommCompletion;
+		fdcirq_FPGACommand.slot = sigc::ptr_fun(&fdcirq_FPGACommCompletion);
 		fdcirq_state = COMMAND_FINAL_FETCH;
 		FPGAComm_ReadWriteCommand(&fdcirq_FPGACommand);
 		break;
@@ -420,8 +417,8 @@ static void FDC_IRQHandler(void */*unused*/) {
 }
 
 void FDC_Setup() {
-	Timer_Repeating(40000, driveStatusTimer, NULL);
-	FPGAComm_SetIRQHandler(0, FDC_IRQHandler, NULL);
+	Timer_Repeating(40000, sigc::ptr_fun(&driveStatusTimer));
+	FPGAComm_IRQHandler(0).connect(sigc::ptr_fun(&FDC_IRQHandler));
 	FPGAComm_EnableIRQs(0x01);
 }
 

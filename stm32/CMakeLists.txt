@@ -72,8 +72,8 @@ set(MAIN_CSRCS
   src/joyport.cpp
   src/fpga/fpga_comm.cpp
   src/fpga/sprite.cpp
-  src/fpga/font.c
-  src/block/sdio.c
+  src/fpga/font.cpp
+  src/block/sdio.cpp
   src/block/sdcard.cpp
   src/block/msd.cpp
   src/fs/fat.cpp

@@ -125,9 +125,9 @@ void Icons::deallocateIcon(Icon const *icon) {
   }
 }
 
-void Icons::_fpgacmpl(int result, FPGAComm_Command *command) {
+void Icons::fpgacmpl(int result) {
   if (result != 0) {
-    FPGAComm_ReadWriteCommand(command);
+    FPGAComm_ReadWriteCommand(&fpgacmd);
     return;
   }
   icons.uploading = 0xff;
@@ -185,7 +185,7 @@ void Icons::checkTiles() {
       ti.dirty = false;
       if (ti.addr != 0xffff) {
 	fpgacmd.read_data = NULL;
-	fpgacmd.completion = _fpgacmpl;
+	fpgacmd.slot = sigc::mem_fun(this, &Icons::fpgacmpl);
 	fpgacmd.address = FPGA_GRPH_SPRITES_RAM + 4*ti.addr;
 	fpgacmd.length = sizeof(tiledata);
 	fpgacmd.write_data = tiledata;

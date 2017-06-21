@@ -6,10 +6,10 @@
 #include "fileselect.hpp"
 
 #include <fpga/sprite.hpp>
-#include <fpga/fpga_comm.h>
+#include <fpga/fpga_comm.hpp>
 #include <fpga/layout.h>
 #include <fpga/fpga_uploader.hpp>
-#include <timer.h>
+#include <timer.hpp>
 #include <deferredwork.hpp>
 
 #include <sstream>

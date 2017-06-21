@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <vector>
 #include "bits.h"
+#include <sigc++/sigc++.h>
 
 /** \brief Functionality for handling CPC style disk images
  */
@@ -22,8 +23,7 @@ namespace dsk {
 		bool mfm;
 		bool deleted;
 		bool find_any;
-		void (*completion)(RefPtr<DiskSector> sector,
-				   DiskFindSectorCommand *command);
+		sigc::slot<void (RefPtr<DiskSector> sector)> slot;
 	};
 
 	class DiskSector : public Refcounted<DiskSector> {
@@ -57,10 +57,7 @@ namespace dsk {
 		std::vector<uint8_t> current_cylinder;
 		DiskFindSectorCommand *current_command;
 		unsigned current_sector;
-		struct PReadInfo {
-			Disk *_this;
-			PReadCommand cmd;
-		} preadinfo;
+		aio::PReadCommand preadcmd;
 	public:
 		bool write_protected;
 		bool two_sided;

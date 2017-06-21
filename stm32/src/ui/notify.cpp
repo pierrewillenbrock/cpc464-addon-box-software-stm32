@@ -5,7 +5,7 @@
 #include <fpga/font.h>
 #include <deque>
 #include <deferredwork.hpp>
-#include <timer.h>
+#include <timer.hpp>
 #include <ui/icons.hpp>
 
 using namespace ui;
@@ -66,7 +66,7 @@ static void Notify_UpdateNotifications() {
 	notify_updateQueued = false;
 }
 
-static void Notify_Timeout(void *) {
+static void Notify_Timeout() {
 	//we just remove one element.
 	ISR_Guard g;
 	if (notify_list.front().icon)
@@ -85,5 +85,5 @@ void ui::Notification_Add(std::string const & message, Icon *icon) {
 		notify_updateQueued = true;
 		addDeferredWork(sigc::ptr_fun(Notify_UpdateNotifications));
 	}
-	Timer_Oneshot(5000000, &Notify_Timeout, NULL);
+	Timer_Oneshot(5000000, sigc::ptr_fun(&Notify_Timeout));
 }

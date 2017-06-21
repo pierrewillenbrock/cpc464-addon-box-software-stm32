@@ -1,7 +1,7 @@
 
 #include "scrollbar.hpp"
 #include <fpga/font.h>
-#include <timer.h>
+#include <timer.hpp>
 
 using namespace ui;
 
@@ -169,7 +169,7 @@ void ScrollBar::mouseDown(uint8_t button, MouseState mousestate) {
     }
     if (m_pressed != None && m_pressed != Nob) {
       // install our timer. first shot is 0.5s, then 0.2s
-      m_pressedTimer = Timer_Oneshot(500000, _pressedTimer, this);
+      m_pressedTimer = Timer_Oneshot(500000, sigc::mem_fun(this, &ScrollBar::pressedTimer));
       m_mouseOver = true;
     }
     m_pressedMousePos = Point(mousestate.x,mousestate.y);
@@ -181,7 +181,7 @@ void ScrollBar::mouseDown(uint8_t button, MouseState mousestate) {
 
 void ScrollBar::pressedTimer() {
   ISR_Guard g;
-  m_pressedTimer = Timer_Oneshot(200000, _pressedTimer, this);
+  m_pressedTimer = Timer_Oneshot(200000, sigc::mem_fun(this, &ScrollBar::pressedTimer));
   if (m_mouseOver) {
     if (m_pressed == Back) {
       if(m_position > 0) {
@@ -213,11 +213,6 @@ void ScrollBar::pressedTimer() {
     recalcNobPosition();
     redraw();
   }
-}
-
-void ScrollBar::_pressedTimer(void *data) {
-  ScrollBar *_this = (ScrollBar *)data;
-  _this->pressedTimer();
 }
 
 void ScrollBar::mouseUp(uint8_t button, MouseState mousestate) {

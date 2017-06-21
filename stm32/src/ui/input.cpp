@@ -1,6 +1,6 @@
 
 #include "input.hpp"
-#include <timer.h>
+#include <timer.hpp>
 #include <fpga/font.h>
 #include <sstream>
 #include <cmath>
@@ -144,7 +144,7 @@ void Input::mouseDown(uint8_t button, MouseState mousestate) {
       m_accel = 0;
       if(!m_pressedTimer) {
         doValueChange();
-        m_pressedTimer = Timer_Oneshot(500000, _pressedTimer, this);
+        m_pressedTimer = Timer_Oneshot(500000, sigc::mem_fun(this, &Input::pressedTimer));
       }
     } else {
       //click in the remaining area: move input focus here and set the cursor
@@ -196,15 +196,10 @@ void Input::doValueChange()  {
 void Input::pressedTimer() {
   ISR_Guard g;
   if (m_pressed != None || m_joyChange != 0)
-    m_pressedTimer = Timer_Oneshot(200000, _pressedTimer, this);
+    m_pressedTimer = Timer_Oneshot(200000, sigc::mem_fun(this, &Input::pressedTimer));
   else
     m_pressedTimer = 0;
   doValueChange();
-}
-
-void Input::_pressedTimer(void *data) {
-  Input *_this = (Input *)data;
-  _this->pressedTimer();
 }
 
 void Input::mouseUp(uint8_t button, MouseState mousestate) {
@@ -310,7 +305,7 @@ void Input::joyAxis(JoyState state) {
         m_joyChange = -64;
       if(!m_pressedTimer) {
         doValueChange();
-        m_pressedTimer = Timer_Oneshot(500000, _pressedTimer, this);
+        m_pressedTimer = Timer_Oneshot(500000, sigc::mem_fun(this, &Input::pressedTimer));
       }
     } else if(state.y < -64) {
       if (state.y > -128) {
@@ -320,7 +315,7 @@ void Input::joyAxis(JoyState state) {
         m_joyChange = 64;
       if(!m_pressedTimer) {
         doValueChange();
-        m_pressedTimer = Timer_Oneshot(500000, _pressedTimer, this);
+        m_pressedTimer = Timer_Oneshot(500000, sigc::mem_fun(this, &Input::pressedTimer));
       }
     } else {
       m_joyChange = 0;

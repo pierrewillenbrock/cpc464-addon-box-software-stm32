@@ -2,10 +2,10 @@
 #include "iconbar_control.hpp"
 
 #include <fpga/sprite.hpp>
-#include <fpga/fpga_comm.h>
+#include <fpga/fpga_comm.hpp>
 #include <fpga/layout.h>
 #include <fpga/fpga_uploader.hpp>
-#include <timer.h>
+#include <timer.hpp>
 
 #include <sstream>
 
@@ -843,14 +843,13 @@ void IconBar_Control::setDiskActivity(unsigned no, bool activity) {
   updateDone();
 }
 
-void IconBar_Control::diskMotorTimeout(void *data) {
-  IconBar_Control *_this = (IconBar_Control*)data;
-  sprite_set_palette(0, palette0[_this->disk_motor_anim+1]);
+void IconBar_Control::diskMotorTimeout() {
+  sprite_set_palette(0, palette0[disk_motor_anim+1]);
   sprite_upload_palette();
 
-  _this->disk_motor_anim++;
-  if (_this->disk_motor_anim >= 4)
-    _this->disk_motor_anim = 0;
+  disk_motor_anim++;
+  if (disk_motor_anim >= 4)
+    disk_motor_anim = 0;
 }
 
 void IconBar_Control::setDiskMotor(bool on) {
@@ -858,11 +857,10 @@ void IconBar_Control::setDiskMotor(bool on) {
   if (on) {
     if(diskMotor_timer)
       return;
-    diskMotorTimeout(NULL);
+    diskMotorTimeout();
 
     diskMotor_timer = Timer_Repeating(100000,
-           IconBar_Control::diskMotorTimeout,
-           this);
+           sigc::mem_fun(this, &IconBar_Control::diskMotorTimeout));
   } else {
     if(!diskMotor_timer)
       return;

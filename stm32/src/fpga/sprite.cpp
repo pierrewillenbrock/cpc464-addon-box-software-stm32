@@ -1,6 +1,6 @@
 
 #include <fpga/sprite.hpp>
-#include <fpga/fpga_comm.h>
+#include <fpga/fpga_comm.hpp>
 #include <fpga/layout.h>
 #include <fpga/fpga_uploader.hpp>
 #include <irq.h>

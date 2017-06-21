@@ -18,9 +18,9 @@
 #include <bsp/stm32f4xx_exti.h>
 #include <bsp/stm32f4xx_syscfg.h>
 #include <bsp/misc.h>
-#include <fpga/fpga_comm.h>
+#include <fpga/fpga_comm.hpp>
 #include <fpga/layout.h>
-#include <timer.h>
+#include <timer.hpp>
 #include <block/sdcard.h>
 #include <fs/fat.h>
 #include <fs/vfs.hpp>
@@ -246,7 +246,7 @@ void captureCPCLog() {
 
 static FPGAComm_Command cpcResetFPGACommand;
 static uint8_t cpcResetState = 0x6;
-static void cpcResetCompletion(int /*result*/, struct FPGAComm_Command */*unused*/) {
+static void cpcResetCompletion(int /*result*/) {
 	if (cpcResetState & 1) {
 		cpcResetState &= ~1;
 
@@ -259,7 +259,7 @@ static void cpcResetTimer(void */*unused*/) {
 	cpcResetFPGACommand.length = 1;
 	cpcResetFPGACommand.read_data = NULL;
 	cpcResetFPGACommand.write_data = &cpcResetState;
-	cpcResetFPGACommand.completion = cpcResetCompletion;
+	cpcResetFPGACommand.slot = sigc::ptr_fun(&cpcResetCompletion);
 	FPGAComm_ReadWriteCommand(&cpcResetFPGACommand);
 }
 
@@ -269,7 +269,7 @@ static FpgaGraphicsSettings fpga_graphics_settings = {
   290,300,310,25, 9, 72, 934, 145
 };
 
-static void graphicsCheckCompletion(int result, struct FPGAComm_Command */*unused*/) {
+static void graphicsCheckCompletion(int result) {
 	if (result != 0)
 		return;
 	if (graphicsCheckData.vposmax < 200 ||
@@ -307,17 +307,17 @@ static void graphicsCheckCompletion(int result, struct FPGAComm_Command */*unuse
 		graphicsCheckFPGACommand.length = sizeof(fpga_graphics_settings);
 		graphicsCheckFPGACommand.read_data = NULL;
 		graphicsCheckFPGACommand.write_data = &fpga_graphics_settings;
-		graphicsCheckFPGACommand.completion = NULL;
+		graphicsCheckFPGACommand.slot = sigc::slot<void(int)>();
 		FPGAComm_ReadWriteCommand(&graphicsCheckFPGACommand);
 	}
 }
 
-static void graphicsCheckTimer(void */*unused*/) {
+static void graphicsCheckTimer() {
 	graphicsCheckFPGACommand.address = FPGA_GRPH_VPOSMAX;
 	graphicsCheckFPGACommand.length = 4;
 	graphicsCheckFPGACommand.read_data = &graphicsCheckData;
 	graphicsCheckFPGACommand.write_data = NULL;
-	graphicsCheckFPGACommand.completion = graphicsCheckCompletion;
+	graphicsCheckFPGACommand.slot = sigc::ptr_fun(&graphicsCheckCompletion);
 	FPGAComm_ReadWriteCommand(&graphicsCheckFPGACommand);
 }
 
@@ -326,12 +326,15 @@ static std::deque<sigc::slot<void> > deferred_work;
 void doDeferredWork() {
 	uint32_t irq_level;
 	ISR_Disable(irq_level);
+	swbarrier(); //make sure the compiler reloads any of deferred_work
 	while(!deferred_work.empty()) {
 		sigc::slot<void> work = deferred_work.front();
 		deferred_work.pop_front();
+		swbarrier(); //make sure the compiler stores all of deferred_work
 		ISR_Enable(irq_level);
 		work();
 		ISR_Disable(irq_level);
+		swbarrier(); //make sure the compiler reloads any of deferred_work
 	}
 	ISR_Enable(irq_level);
 }
@@ -393,7 +396,7 @@ int main()
 	  sprite_upload_palette();
 	}
 
-	Timer_Repeating(500000, graphicsCheckTimer, NULL);
+	Timer_Repeating(500000, sigc::ptr_fun(&graphicsCheckTimer));
 
 	Mouse_Setup();
 	Joystick_Setup();

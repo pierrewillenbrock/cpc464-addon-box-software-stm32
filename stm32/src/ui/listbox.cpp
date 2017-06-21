@@ -1,7 +1,7 @@
 
 #include "listbox.hpp"
 #include <fpga/font.h>
-#include <timer.h>
+#include <timer.hpp>
 
 using namespace ui;
 
