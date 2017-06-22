@@ -17,17 +17,17 @@ static inline void interrupt_enable(uint32_t level) {
 #define ISR_Disable( cookie ) do { cookie = interrupt_disable(); } while(0)
 #define ISR_Enable( cookie ) interrupt_enable(cookie)
 
+#define swbarrier() asm volatile ("" ::: "memory")
+
 #ifdef __cplusplus
 class ISR_Guard {
 private:
 	uint32_t level;
 public:
-	ISR_Guard() { ISR_Disable(level); }
-	~ISR_Guard() { ISR_Enable(level); }
+	ISR_Guard() { ISR_Disable(level); swbarrier(); }
+	~ISR_Guard() { swbarrier(); ISR_Enable(level); }
 };
 #endif
-
-#define swbarrier() asm volatile ("" ::: "memory")
 
 #ifdef __cplusplus
  extern "C" {
