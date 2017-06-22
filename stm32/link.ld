@@ -57,10 +57,20 @@ SECTIONS
 	} > FLASH AT > FLASH
 	__exidx_end = .;
 
-	/* the got sections are never written since we are not relocatable */
+	/* the got and .data.rel.ro* sections are never written since we are
+         * not relocatable.
+	 * Background:
+	 * The .got and .data.rel.ro* sections contain data that would need
+	 * to be relocated by the dynamic linker. afterwards, these sections
+	 * should be considered read only. We do a static link into a fixed
+	 * memory, so we can make them read only from the beginning.
+	 */
 	.got : {
 		*(.got)
 		*(.got*)
+	} >FLASH AT > FLASH
+	.data.rel.ro : {
+		*(.data.rel.ro*)
 	} >FLASH AT > FLASH
 
 	. = ALIGN(4); /* automatically placed sections ld wants to place here */
