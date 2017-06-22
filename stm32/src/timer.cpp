@@ -2,6 +2,7 @@
 #include <timer.hpp>
 #include <unistd.h>
 #include <irq.h>
+#include <bits.h>
 
 #include <map>
 
@@ -148,9 +149,8 @@ static void usleep_timer(volatile uint32_t *d) {
 int usleep(useconds_t usec) {
   volatile uint32_t d = 0;
   Timer_Oneshot(usec, sigc::bind(sigc::ptr_fun(&usleep_timer), &d));
-  while(!d) {
-    __WFI();
-  }
+  while(!d)
+    sched_yield();
   return 0;
 }
 

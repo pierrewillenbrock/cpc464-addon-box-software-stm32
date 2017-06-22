@@ -323,20 +323,17 @@ static void graphicsCheckTimer() {
 
 static std::deque<sigc::slot<void> > deferred_work;
 
-void doDeferredWork() {
-	uint32_t irq_level;
-	ISR_Disable(irq_level);
-	swbarrier(); //make sure the compiler reloads any of deferred_work
-	while(!deferred_work.empty()) {
-		sigc::slot<void> work = deferred_work.front();
+bool doDeferredWork() {
+	sigc::slot<void> work;
+	{
+		ISR_Guard g;
+		if(deferred_work.empty())
+			return false;
+		work = deferred_work.front();
 		deferred_work.pop_front();
-		swbarrier(); //make sure the compiler stores all of deferred_work
-		ISR_Enable(irq_level);
-		work();
-		ISR_Disable(irq_level);
-		swbarrier(); //make sure the compiler reloads any of deferred_work
 	}
-	ISR_Enable(irq_level);
+	work();
+	return true;
 }
 
 int main()
@@ -472,10 +469,9 @@ int main()
 			}
 			break;
 		case RomLoaded:
-			__WFI();
 			break;
 		}
-		doDeferredWork();
+		sched_yield();
 	}
 
 	return 0;

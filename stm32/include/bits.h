@@ -48,6 +48,14 @@ struct ARMv7M_FPUExceptionFrame{
 #define isRPtr(p) ( isROMPtr(p) || isLOWMEMPtr(p) || isRAMPtr(p) )
 
 #ifdef __cplusplus
+extern "C" {
+#endif
+int sched_yield( void );
+#ifdef __cplusplus
+}
+#endif
+
+#ifdef __cplusplus
 #include <sigc++/sigc++.h>
 
 namespace aio {

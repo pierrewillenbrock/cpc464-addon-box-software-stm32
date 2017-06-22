@@ -159,9 +159,8 @@ static void fetchBlock( fat_priv::Partition *priv, uint32_t block) {
 	priv->read_command.dst = priv->block.data();
 	priv->read_command.slot = sigc::bind(sigc::ptr_fun(&fetchBlock_cmpl),priv);
 	priv->msd->readBlocks(&priv->read_command);
-	while(*blocknop == ~0U) {
-		__WFI();
-	}
+	while(*blocknop == ~0U)
+		sched_yield();
 }
 
 /* caller fills: read_command->num_blocks, dst, slot.

@@ -215,9 +215,8 @@ void FPGAComm_CopyFromToFPGA(void *dest, uint32_t fpga, void const *src, size_t 
 
 	FPGAComm_ReadWriteCommand(&comm.command);
 	uint32_t volatile *t = (uint32_t volatile *)&comm.completed;
-	while(!*t) {
-		__WFI();
-	}
+	while(!*t)
+		sched_yield();
 }
 
 void FPGAComm_CopyToFPGA(uint32_t dest, void const *src, size_t n) {

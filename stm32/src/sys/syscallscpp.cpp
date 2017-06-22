@@ -14,6 +14,7 @@
 #include <irq.h>
 #include <fs/vfs.hpp>
 #include <bits.h>
+#include <deferredwork.hpp>
 
 namespace vfs {
 	struct File : public Refcounted<File>  {
@@ -718,3 +719,8 @@ int access(const char *path, int mode) {
 	return 0;
 }
 
+int sched_yield() {
+	if (!doDeferredWork())
+		__WFI();
+	return 0;
+}
