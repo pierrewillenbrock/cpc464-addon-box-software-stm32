@@ -28,6 +28,7 @@
 #include <usb/usbdevice.hpp>
 #include <usb/usbendpoint.hpp>
 #include <usb/urb.hpp>
+#include <deferredwork.hpp>
 
 static RefPtr<usb::Device> rootDevice = NULL;///< \brief The current root device.
 static volatile uint8_t usb_address = 1;///< \brief the next usb_address being used
@@ -333,7 +334,7 @@ void usb::queueDeviceActivation (sigc::slot<void> const &slot) {
 		}
 		USB_activationCurrent.slot = slot;
 	}
-	slot();
+	addDeferredWork(USB_activationCurrent.slot);
 }
 
 static std::bitset<128> used_addresses;
@@ -350,7 +351,7 @@ void usb::activationComplete() {
 		}
 	}
 	if (USB_activationCurrent.slot)
-		USB_activationCurrent.slot();
+		addDeferredWork(USB_activationCurrent.slot);
 }
 
 uint8_t usb::getNextAddress() {
