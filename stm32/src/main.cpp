@@ -264,7 +264,8 @@ static void cpcResetTimer(void */*unused*/) {
 }
 
 static FPGAComm_Command graphicsCheckFPGACommand;
-static struct { uint16_t vposmax; uint16_t hposmax; } graphicsCheckData;
+static struct { uint16_t vposmax; uint16_t hposmax; } graphicsCheckData,
+       lastGraphicsCheckData;
 static FpgaGraphicsSettings fpga_graphics_settings = {
   290,300,310,25, 9, 72, 934, 145
 };
@@ -278,6 +279,15 @@ static void graphicsCheckCompletion(int result) {
 	//adjust {v,h}{sync,blank} according to current display mode
 	//and tell screen about the current screen size. screen then
 	//passes this information on.
+
+	//filter small one count jitter
+	if (graphicsCheckData.hposmax <= lastGraphicsCheckData.hposmax+1 &&
+		graphicsCheckData.hposmax+1 >= lastGraphicsCheckData.hposmax &&
+		graphicsCheckData.vposmax <= lastGraphicsCheckData.vposmax+1 &&
+		graphicsCheckData.vposmax+1 >= lastGraphicsCheckData.vposmax)
+		graphicsCheckData = lastGraphicsCheckData;
+	else
+		lastGraphicsCheckData = graphicsCheckData;
 
 	unsigned w = graphicsCheckData.hposmax+1;
 	unsigned h = graphicsCheckData.vposmax;
