@@ -361,11 +361,15 @@ int main()
 		__WFI();
 	}
 
+	//now that we are done with the _very basic_ system setup, go ahead to
+	//less basic things, like vfs.
 	vfs::Setup();
 
+	//okay, got the system things in place, add our own services.
 	FPGAComm_Setup();
 	Sprite_Setup();
 
+	//check if the fpga is actually there(and the right version)
 	while(1) {
 		char name[6] = {0xff, 0}; //name and revision
 		FPGAComm_CopyFromFPGA((void*)&name, FPGA_INT_ID, 6);
@@ -387,6 +391,7 @@ int main()
 	GPIO_ResetBits(LED_GPIO, LEDR_PIN | LEDG_PIN);
 	GPIO_SetBits(LED_GPIO, LEDB_PIN);
 
+	//after this, we can actually output text in sprites!
 	font_upload();
 
 	{
@@ -403,24 +408,33 @@ int main()
 	  sprite_upload_palette();
 	}
 
+	//for the benefit of the ui things
 	Timer_Repeating(500000, sigc::ptr_fun(&graphicsCheckTimer));
 
+	//Input drivers
 	Mouse_Setup();
 	Joystick_Setup();
 	Keyboard_Setup();
 
+	//the joyport
 	joyport::setup();
 
-	IconBar_Setup();
-
+	//Filesystem and mass storage drivers
 	FAT_Setup();
 	SDcard_Setup();
 
+	//notification display
 	ui::Notification_Setup();
+
+	//usb
 	USBDeviceNotify_Setup(); // must be first usb driver
 	USBHID_Setup();
 	usb::Setup();
 
+	//main graphical UI
+	IconBar_Setup();
+
+	//looks like everything is ready.
 	enum {
 		Initial,
 		RomLoaded
