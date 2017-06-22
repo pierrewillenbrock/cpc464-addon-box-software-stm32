@@ -5,20 +5,13 @@ cmake_minimum_required(VERSION 2.6)
 #when first creating the build directory.
 #adjust toolchain.cmake to your system.
 
-set(COMPILE_DEFINITIONS_DEBUG    -O1 -ggdb )
-set(COMPILE_DEFINITIONS_RELEASE  -O1)
-
 add_definitions(
   -DSTM32F40_41xxx -DUSE_STDPERIPH_DRIVER -DUSE_FULL_ASSERT
   -DHSE_VALUE=16000000
   )
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -fno-unwind-tables -fno-common -fno-exceptions -fdata-sections -ffunction-sections -std=c++14"
-  )
-  #-fno-rtti
-
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -fno-unwind-tables -fno-common -fno-exceptions -fdata-sections -ffunction-sections"
-  )
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -fno-unwind-tables -fno-common -fno-exceptions -fdata-sections -ffunction-sections -std=c++14 -O1 -ggdb" )
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -fno-unwind-tables -fno-common -fno-exceptions -fdata-sections -ffunction-sections -O1 -ggdb" )
 
 function(enable_unity_build UB_SUFFIX SOURCE_VARIABLE_NAME)
   set(files ${${SOURCE_VARIABLE_NAME}})
