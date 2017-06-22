@@ -56,6 +56,7 @@ namespace usb {
 		bool continueBulkTransfer(bool deviceToHost, bool force);
 		void finishReadTransfer();
 		void completeCurrentURB(int resultcode, URB::USBResult usbresult);
+		void cancelTransfer();
 	public:
 		Channel (unsigned index);
 		void setupForURB( URB *u);

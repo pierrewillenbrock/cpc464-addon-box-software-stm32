@@ -133,6 +133,16 @@ void usb::Channel::RXData(unsigned bcnt, unsigned dpid) {
 	transfer.state = Transfer::Result;
 }
 
+void usb::Channel::cancelTransfer() {
+	assert(transfer.state != Transfer::Idle &&
+	       transfer.state != Transfer::Disabling);
+	usb::frameChannelTime -= transfer.transfer_time;
+	transfer.state = Transfer::Disabling;
+	regs->HCINT = OTG_HCINT_CHH;
+	regs->HCCHAR |= OTG_HCCHAR_CHDIS;
+	regs->HCINTMSK = USB_CHAN_DISABLE_INTMASK;
+}
+
 void usb::Channel::INT() {
 	/* observations:
 	   if (HCCHAR & 0xc0000000) == 0, trying to disable it will not
@@ -216,10 +226,12 @@ void usb::Channel::INT() {
 				switch(current_urb->endpoint->type) {
 				case usb::Endpoint::Control:
 				case usb::Endpoint::Bulk:
-					               otgc->GINTMSK |= OTG_GINTMSK_NPTXFEM; break;
+					otgc->GINTMSK |= OTG_GINTMSK_NPTXFEM;
+					break;
 				case usb::Endpoint::ISO:
 				case usb::Endpoint::IRQ:
-					               otgc->GINTMSK |= OTG_GINTMSK_PTXFEM; break;
+					otgc->GINTMSK |= OTG_GINTMSK_PTXFEM;
+					break;
 				}
 			} else {
 				//done with this transfer
@@ -299,14 +311,8 @@ void usb::Channel::INT() {
 			//only BULK and IRQ(and Control below) can generate NAK
 			if (current_urb->endpoint->type == usb::Endpoint::IRQ) {
 				//we need to shutdown the channel here.
-				regs->HCINT = OTG_HCINT_CHH;
-				regs->HCCHAR |= OTG_HCCHAR_CHDIS;
-				regs->HCINTMSK = USB_CHAN_DISABLE_INTMASK;
 				state = Disabling;
-				assert(transfer.state != Transfer::Idle &&
-					transfer.state != Transfer::Disabling);
-				usb::frameChannelTime -= transfer.transfer_time;
-				transfer.state = Transfer::Disabling;
+				cancelTransfer();
 				current_urb = NULL;
 			} else {
 				//bulk read just keeps waiting?
@@ -339,26 +345,14 @@ void usb::Channel::INT() {
 			current_urb->endpoint->dataToggleOUT =
 				((regs->HCTSIZ & 0x60000000) >> 29) != 0x2;
 			state = DisablingCtlSetupTX;
-			assert(transfer.state != Transfer::Idle &&
-				transfer.state != Transfer::Disabling);
-			usb::frameChannelTime -= transfer.transfer_time;
-			transfer.state = Transfer::Disabling;
 			transfer.packet_size = 0;
-			regs->HCINT = OTG_HCINT_CHH;
-			regs->HCCHAR |= OTG_HCCHAR_CHDIS;
-			regs->HCINTMSK = USB_CHAN_DISABLE_INTMASK;
+			cancelTransfer();
 			break;
 		case CtlDataTXResult:
 			LogEvent("USBChannel: NAK in CtlDataTXResult", this);
 			current_urb->endpoint->dataToggleOUT =
 				((regs->HCTSIZ & 0x60000000) >> 29) != 0x2;
 			state = DisablingCtlDataTX;
-			assert(transfer.state != Transfer::Idle &&
-				transfer.state != Transfer::Disabling);
-			assert(transfer.state != Transfer::Idle &&
-				transfer.state != Transfer::Disabling);
-			usb::frameChannelTime -= transfer.transfer_time;
-			transfer.state = Transfer::Disabling;
 			data_urb += transfer.data_handled;
 			if (data_urb_remaining >= transfer.data_handled)
 				data_urb_remaining -= transfer.data_handled;
@@ -366,23 +360,15 @@ void usb::Channel::INT() {
 				data_urb_remaining = 0;
 			transfer.data_handled = 0;
 			transfer.packet_size = 0;
-			regs->HCINT = OTG_HCINT_CHH;
-			regs->HCCHAR |= OTG_HCCHAR_CHDIS;
-			regs->HCINTMSK = USB_CHAN_DISABLE_INTMASK;
+			cancelTransfer();
 			break;
 		case CtlStatusTXResult:
 			LogEvent("USBChannel: NAK in CtlStatusTXResult", this);
 			current_urb->endpoint->dataToggleOUT =
 				((regs->HCTSIZ & 0x60000000) >> 29) != 0x2;
 			state = DisablingCtlStatusTX;
-			assert(transfer.state != Transfer::Idle &&
-				transfer.state != Transfer::Disabling);
-			usb::frameChannelTime -= transfer.transfer_time;
-			transfer.state = Transfer::Disabling;
 			transfer.packet_size = 0;
-			regs->HCINT = OTG_HCINT_CHH;
-			regs->HCCHAR |= OTG_HCCHAR_CHDIS;
-			regs->HCINTMSK = USB_CHAN_DISABLE_INTMASK;
+			cancelTransfer();
 			break;
 		default: assert(0); break;
 		}
@@ -525,14 +511,8 @@ void usb::Channel::INT() {
 		case CtlStatusTXWait:
 			assert(0);
 			LogEvent("USBChannel: XFRC in *TXWait", this);
-			regs->HCINT = OTG_HCINT_CHH;
-			regs->HCCHAR |= OTG_HCCHAR_CHDIS;
-			regs->HCINTMSK = USB_CHAN_DISABLE_INTMASK;
 			state = Disabling;
-			assert(transfer.state != Transfer::Idle &&
-				transfer.state != Transfer::Disabling);
-			usb::frameChannelTime -= transfer.transfer_time;
-			transfer.state = Transfer::Disabling;
+			cancelTransfer();
 			data_urb += transfer.data_handled;
 			if (data_urb_remaining >= transfer.data_handled)
 				data_urb_remaining -= transfer.data_handled;
@@ -551,9 +531,6 @@ void usb::Channel::INT() {
 		LogEvent("USBChannel: DTERR", this);
 		hcint &= ~OTG_HCINT_DTERR;
 		regs->HCINT = OTG_HCINT_DTERR;
-		regs->HCINT = OTG_HCINT_CHH;
-		regs->HCCHAR |= OTG_HCCHAR_CHDIS;
-		regs->HCINTMSK = USB_CHAN_DISABLE_INTMASK;
 		switch (state) {
 		case TXResult:
 		case TXWait:
@@ -571,10 +548,7 @@ void usb::Channel::INT() {
 		default: break;
 		}
 		state = Disabling;
-		assert(transfer.state != Transfer::Idle &&
-			transfer.state != Transfer::Disabling);
-		usb::frameChannelTime -= transfer.transfer_time;
-		transfer.state = Transfer::Disabling;
+		cancelTransfer();
 		//cannot automatically recover from this, so communicate URB error
 		u->buffer_received = u->buffer_len - data_urb_remaining;
 		completeCurrentURB(1,usb::URB::DTErr);
@@ -613,18 +587,10 @@ void usb::Channel::INT() {
 		case CtlSetupTXResult:
 			LogEvent("USBChannel: TXERR in CtlSetupTXResult", this);
 			state = DisablingCtlSetupTX;
-			assert(transfer.state != Transfer::Idle &&
-				transfer.state != Transfer::Disabling);
-			usb::frameChannelTime -= transfer.transfer_time;
-			transfer.state = Transfer::Disabling;
 			break;
 		case CtlDataTXResult:
 			LogEvent("USBChannel: TXERR in CtlDataTXResult", this);
 			state = DisablingCtlDataTX;
-			assert(transfer.state != Transfer::Idle &&
-				transfer.state != Transfer::Disabling);
-			usb::frameChannelTime -= transfer.transfer_time;
-			transfer.state = Transfer::Disabling;
 			data_urb += transfer.data_handled;
 			if (data_urb_remaining >= transfer.data_handled)
 				data_urb_remaining -= transfer.data_handled;
@@ -635,10 +601,6 @@ void usb::Channel::INT() {
 		case CtlDataRXWait:
 			LogEvent("USBChannel: TXERR in CtlDataRXWait", this);
 			state = DisablingCtlDataRX;
-			assert(transfer.state != Transfer::Idle &&
-				transfer.state != Transfer::Disabling);
-			usb::frameChannelTime -= transfer.transfer_time;
-			transfer.state = Transfer::Disabling;
 			data_urb += transfer.data_handled;
 			if (data_urb_remaining >= transfer.data_handled)
 				data_urb_remaining -= transfer.data_handled;
@@ -649,34 +611,20 @@ void usb::Channel::INT() {
 		case CtlStatusTXResult:
 			LogEvent("USBChannel: TXERR in CtlStatusTXResult", this);
 			state = DisablingCtlStatusTX;
-			assert(transfer.state != Transfer::Idle &&
-				transfer.state != Transfer::Disabling);
-			usb::frameChannelTime -= transfer.transfer_time;
-			transfer.state = Transfer::Disabling;
 			break;
 		case CtlStatusRXWait:
 			LogEvent("USBChannel: TXERR in CtlStatusRXWait", this);
 			state = DisablingCtlStatusRX;
-			assert(transfer.state != Transfer::Idle &&
-				transfer.state != Transfer::Disabling);
-			usb::frameChannelTime -= transfer.transfer_time;
-			transfer.state = Transfer::Disabling;
 			break;
 		case RXWait:
 			LogEvent("USBChannel: TXERR in RXWait", this);
 			state = Disabling;
-			assert(transfer.state != Transfer::Idle &&
-				transfer.state != Transfer::Disabling);
-			usb::frameChannelTime -= transfer.transfer_time;
-			transfer.state = Transfer::Disabling;
 			completeCurrentURB(1,usb::URB::TXErr);
 			break;
 		default: assert(0); break;
 		}
 		transfer.packet_size = 0;
-		regs->HCINT = OTG_HCINT_CHH;
-		regs->HCCHAR |= OTG_HCCHAR_CHDIS;
-		regs->HCINTMSK = USB_CHAN_DISABLE_INTMASK;
+		cancelTransfer();
 	}
 	if (hcint & OTG_HCINT_STALL) {
 		//must disable the channel when getting STALL (stm32f4 34.17.4 Halting a channel)
@@ -692,14 +640,8 @@ void usb::Channel::INT() {
 		case CtlStatusTXResult:
 		case RXWait:
 			LogEvent("USBChannel: STALL in Ctl*RXWait/*TXResult or RXWait", this);
-			regs->HCINT = OTG_HCINT_CHH;
-			regs->HCCHAR |= OTG_HCCHAR_CHDIS;
-			regs->HCINTMSK = USB_CHAN_DISABLE_INTMASK;
 			state = Disabling;
-			assert(transfer.state != Transfer::Idle &&
-				transfer.state != Transfer::Disabling);
-			usb::frameChannelTime -= transfer.transfer_time;
-			transfer.state = Transfer::Disabling;
+			cancelTransfer();
 			data_urb += transfer.data_handled;
 			if (data_urb_remaining >= transfer.data_handled)
 				data_urb_remaining -= transfer.data_handled;
@@ -1146,14 +1088,9 @@ void usb::Channel::retireURB( usb::URB *u) {
 	LogEvent("USBChannel: retireURB", this);
 	if (current_urb == u) {
 		if (regs->HCCHAR & OTG_HCCHAR_CHENA) {
-			assert(transfer.state != Transfer::Idle);
 			if (transfer.state != Transfer::Disabling) {
-				usb::frameChannelTime -= transfer.transfer_time;
-				regs->HCINT = OTG_HCINT_CHH;
-				regs->HCCHAR |= OTG_HCCHAR_CHDIS;
-				regs->HCINTMSK = USB_CHAN_DISABLE_INTMASK;
+				cancelTransfer();
 				state = Disabling;
-				transfer.state = Transfer::Disabling;
 			}
 		} else {
 			if (transfer.state != Transfer::Idle &&
