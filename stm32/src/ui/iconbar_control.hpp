@@ -42,7 +42,7 @@ private:
   FPGA_Uploader lpentr_uploader;
 
   unsigned disk_motor_anim;
-  uint32_t diskMotor_timer;
+  sigc::connection diskMotor_timer;
 
   void diskMotorTimeout();
 
@@ -51,8 +51,7 @@ public:
   IconBar_Control()
     : hintforicon(-1)
     , mouse_press_iconno(-1)
-    , keyjoy_sel_iconno(-1)
-    , diskMotor_timer(0) {
+    , keyjoy_sel_iconno(-1) {
   }
   void screenRectChange(ui::Rect const &r) {
     m_sprite.setPosition(r.x + r.width - 18*8, r.y + r.height - 2*8);

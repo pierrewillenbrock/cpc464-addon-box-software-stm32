@@ -15,7 +15,7 @@ namespace ui {
     enum { None, Back, PgBack, Nob, PgFwd, Fwd } m_pressed;
     Point m_pressedMousePos;
     unsigned m_pressedPosition;
-    uint32_t m_pressedTimer;
+    sigc::connection m_pressedTimer;
     bool m_mouseOver;
     sigc::signal<void,unsigned> m_onChanged;
     void pressedTimer();

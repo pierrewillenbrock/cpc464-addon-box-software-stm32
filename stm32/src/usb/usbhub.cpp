@@ -33,15 +33,14 @@ private:
 		uint8_t num;
 		uint16_t status;
 		uint16_t change; //pending change bits
-		uint32_t resetTimer;
+		sigc::connection resetTimer;
 		USBHUBDev *hubdev;
 		RefPtr<usb::Device> device;
 		void resetTimeout();
 		void activate();
 		Port() : flags(NeedsCheck),
 			 status(0),
-			 change(0),
-			 resetTimer(0) {}
+			 change(0) {}
 	};
 	RefPtr<usb::Device> device;
 	enum { None, FetchHUBDescriptor, CheckingHubStatus,
@@ -375,7 +374,7 @@ void USBHUBDev::checkStatus() {
 				ports[i].resetTimer =
 					Timer_Oneshot(100000, sigc::mem_fun(ports[i], &Port::resetTimeout));
 			} else {
-				Timer_Cancel(ports[i].resetTimer);
+				ports[i].resetTimer.disconnect();
 				//if we have a device allocated, drop it.
 				if (ports[i].flags & Port::Activating) {
 					usb::activationComplete();

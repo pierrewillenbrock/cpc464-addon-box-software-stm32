@@ -773,9 +773,9 @@ void IconBar_Control::joyTrgUp(ui::JoyTrg trg, ui::JoyState /*state*/) {
     keyjoy_sel_iconno = -1;
     hintforicon = -1;
     ui::Rect r = getGlobalRect();
-    ui::Point p = {r.x + 16 * iconno, r.y};
+    ui::Point p = {uint16_t(r.x + 16 * iconno), r.y};
     //select the current icon
-    if(iconno >= 0 && iconno <= 1) {
+    if(/*iconno >= 0 &&*/ iconno <= 1) {
       joystickSelected(iconno - 0, p);
     }
     if(iconno == 2) {
@@ -864,8 +864,7 @@ void IconBar_Control::setDiskMotor(bool on) {
   } else {
     if(!diskMotor_timer)
       return;
-    Timer_Cancel(diskMotor_timer);
-    diskMotor_timer = 0;
+    diskMotor_timer.disconnect();
 
     sprite_set_palette(0, palette0[0]);
     sprite_upload_palette();

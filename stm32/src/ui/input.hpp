@@ -21,7 +21,7 @@ namespace ui {
     enum { None, Up, Down } m_pressed;
     sigc::signal<void,std::string> m_onChanged;
     sigc::signal<void,int> m_onValueChanged;
-    uint32_t m_pressedTimer;
+    sigc::connection m_pressedTimer;
     bool m_mouseOver;
     void pressedTimer();
     void doValueChange();

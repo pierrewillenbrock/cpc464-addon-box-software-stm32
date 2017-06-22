@@ -198,7 +198,7 @@ void Input::pressedTimer() {
   if (m_pressed != None || m_joyChange != 0)
     m_pressedTimer = Timer_Oneshot(200000, sigc::mem_fun(this, &Input::pressedTimer));
   else
-    m_pressedTimer = 0;
+    m_pressedTimer.disconnect();
   doValueChange();
 }
 

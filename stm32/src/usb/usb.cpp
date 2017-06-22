@@ -389,10 +389,10 @@ static void activateRootDevice() {
 	rootDevice->activate();
 }
 
-static uint32_t usb_timer_handle = 0;
+static sigc::connection usb_timer_connection;
 
 static void USB_PortResetTimer() {
-	usb_timer_handle = 0;
+	usb_timer_connection.disconnect();
 	LogEvent("USB_PortResetTimer");
 	//okay, we held reset for long enough.
 	uint32_t hprt = otgh->HPRT;
@@ -407,7 +407,7 @@ static void USB_PortResetBeginTimer() {
 	hprt &= ~(OTG_HPRT_PENCHNG|OTG_HPRT_PENA|OTG_HPRT_PCDET);
 	hprt |= OTG_HPRT_PRST;
 	otgh->HPRT = hprt;
-	usb_timer_handle = Timer_Oneshot(11000, sigc::ptr_fun(&USB_PortResetTimer));
+	usb_timer_connection = Timer_Oneshot(11000, sigc::ptr_fun(&USB_PortResetTimer));
 }
 
 void OTG_FS_IRQHandler() {
@@ -427,8 +427,8 @@ void OTG_FS_IRQHandler() {
 			hprt &= ~(OTG_HPRT_PENCHNG|OTG_HPRT_PENA|OTG_HPRT_PCDET);
 			hprt |= OTG_HPRT_PCDET;
 			otgh->HPRT = hprt;
-			Timer_Cancel(usb_timer_handle);
-			usb_timer_handle = Timer_Oneshot(100000, sigc::ptr_fun(&USB_PortResetBeginTimer));
+			usb_timer_connection.disconnect();
+			usb_timer_connection = Timer_Oneshot(100000, sigc::ptr_fun(&USB_PortResetBeginTimer));
 			if (rootDevice) {
 				rootDevice->disconnected();
 				rootDevice = NULL;
@@ -460,8 +460,8 @@ void OTG_FS_IRQHandler() {
 						hprt |= OTG_HPRT_PCDET;
 						hprt |= OTG_HPRT_PRST;
 						otgh->HPRT = hprt;
-						Timer_Cancel(usb_timer_handle);
-						usb_timer_handle = Timer_Oneshot(11000, sigc::ptr_fun(&USB_PortResetTimer));
+						usb_timer_connection.disconnect();
+						usb_timer_connection = Timer_Oneshot(11000, sigc::ptr_fun(&USB_PortResetTimer));
 					} else {
 						//now we need to create the new device
 						usb::queueDeviceActivation (sigc::ptr_fun(&activateRootDevice));
@@ -484,8 +484,8 @@ void OTG_FS_IRQHandler() {
 						hprt |= OTG_HPRT_PCDET;
 						hprt |= OTG_HPRT_PRST;
 						otgh->HPRT = hprt;
-						Timer_Cancel(usb_timer_handle);
-						usb_timer_handle = Timer_Oneshot(11000, sigc::ptr_fun(&USB_PortResetTimer));
+						usb_timer_connection.disconnect();
+						usb_timer_connection = Timer_Oneshot(11000, sigc::ptr_fun(&USB_PortResetTimer));
 					} else {
 						//now we need to create the new device
 						usb::queueDeviceActivation (sigc::ptr_fun(&activateRootDevice));

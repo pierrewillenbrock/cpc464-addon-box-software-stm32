@@ -16,7 +16,7 @@
 #include "sdcard_std.h"
 #include <hw/sd.h>
 
-static uint32_t sdio_timer_handle = 0;
+static sigc::connection sdio_timer_connection;
 static struct SDCommand * volatile sdio_current_command = NULL;
 
 #ifdef SDIO_DEBUG
@@ -167,8 +167,7 @@ void SDIO_IRQHandler(void) {
 		return;
 	struct SDCommand *c = sdio_current_command;
 	if (c->state == 0) {
-		Timer_Cancel(sdio_timer_handle);
-		sdio_timer_handle = 0;
+		sdio_timer_connection.disconnect();
 
 		int result = SDIO_OK;
 
@@ -213,8 +212,7 @@ void SDIO_IRQHandler(void) {
 		SDIO_Command(c);
 		c->command |= SDIO_APPCMD;
 	} else if (c->state == 1) {
-		Timer_Cancel(sdio_timer_handle);
-		sdio_timer_handle = 0;
+		sdio_timer_connection.disconnect();
 
 		int result = SDIO_OK;
 
@@ -313,7 +311,7 @@ void SDIO_IRQHandler(void) {
 			SDIO_ITConfig(SDIO_IT_DCRCFAIL, ENABLE);
 			SDIO_ITConfig(SDIO_IT_DTIMEOUT, ENABLE);
 			SDIO_ITConfig(SDIO_IT_STBITERR, ENABLE);
-			sdio_timer_handle = Timer_Oneshot(1000000, sigc::ptr_fun(&SDIO_timeout));
+			sdio_timer_connection = Timer_Oneshot(1000000, sigc::ptr_fun(&SDIO_timeout));
 			break;
 		case DataToCard:
 			SD_DEBUG_SAMPLE(result, c);
@@ -323,12 +321,11 @@ void SDIO_IRQHandler(void) {
 			SDIO_ITConfig(SDIO_IT_DCRCFAIL, ENABLE);
 			SDIO_ITConfig(SDIO_IT_DTIMEOUT, ENABLE);
 			SDIO_ITConfig(SDIO_IT_STBITERR, ENABLE);
-			sdio_timer_handle = Timer_Oneshot(1000, sigc::ptr_fun(&SDIO_timeout));
+			sdio_timer_connection = Timer_Oneshot(1000, sigc::ptr_fun(&SDIO_timeout));
 			break;
 		}
 	} else if (c->state == 2 || c->state == 3) {
-		Timer_Cancel(sdio_timer_handle);
-		sdio_timer_handle = 0;
+		sdio_timer_connection.disconnect();
 
 		int result = SDIO_UnknownError;
 
@@ -357,8 +354,7 @@ void SDIO_IRQHandler(void) {
 void DMA2_Stream3_IRQHandler() {
 	struct SDCommand *c = sdio_current_command;
 	sdio_current_command = NULL;
-	Timer_Cancel(sdio_timer_handle);
-	sdio_timer_handle = 0;
+	sdio_timer_connection.disconnect();
 	SDIO_ITConfig(SDIO_IT_RXOVERR, DISABLE);
 	SDIO_ITConfig(SDIO_IT_DCRCFAIL, DISABLE);
 	SDIO_ITConfig(SDIO_IT_DTIMEOUT, DISABLE);
@@ -399,7 +395,6 @@ void DMA2_Stream3_IRQHandler() {
 static void SDIO_timeout() {
 	struct SDCommand *c = sdio_current_command;
 	sdio_current_command = NULL;
-	sdio_timer_handle = 0;
 	if (c->retryCounter > 0) {
 		SD_DEBUG_SAMPLE(SDIO_SystemTimeout, c);
 		c->retryCounter--;
@@ -531,7 +526,7 @@ void SDIO_Command(struct SDCommand *command) {
 	sdiocmdinit.SDIO_CPSM = SDIO_CPSM_Enable;
 
 	sdio_current_command = command;
-	sdio_timer_handle = Timer_Oneshot(10000, sigc::ptr_fun(&SDIO_timeout));
+	sdio_timer_connection = Timer_Oneshot(10000, sigc::ptr_fun(&SDIO_timeout));
 	command->datapos = 0;
 
 	SDIO_DataConfig(&sdiodatainit);

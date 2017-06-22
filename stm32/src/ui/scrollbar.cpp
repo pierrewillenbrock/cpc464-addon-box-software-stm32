@@ -223,7 +223,7 @@ void ScrollBar::mouseUp(uint8_t button, MouseState mousestate) {
       mousestate.y >= r.y+r.height) {
     if (button == 0 && mousestate.buttons == 0) {
       ISR_Guard g;
-      Timer_Cancel(m_pressedTimer);
+      m_pressedTimer.disconnect();
       m_pressed = None;
       redraw();
     }
@@ -232,7 +232,7 @@ void ScrollBar::mouseUp(uint8_t button, MouseState mousestate) {
   if (button == 0 && mousestate.buttons == 0) {
     if (m_pressed) {
       ISR_Guard g;
-      Timer_Cancel(m_pressedTimer);
+      m_pressedTimer.disconnect();
       m_pressed = None;
       redraw();
     }
