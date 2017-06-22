@@ -17,13 +17,45 @@ namespace vfs {
 		off_t size;
 		Inode() : mode(0), size(0) {}
 		virtual ~Inode() {}
-		virtual _ssize_t pread(void */*ptr*/, size_t /*len*/, off_t /*offset*/) {
-			errno = EINVAL;
-			return -1;
+		static void aiocompleter(int result, int _errno, volatile int *done, volatile int *aiores, volatile int *aioerrno) {
+			*aiores = result;
+			*aioerrno = _errno;
+			swbarrier();
+			*done = 1;
 		}
-		virtual _ssize_t pwrite(const void */*ptr*/, size_t /*len*/, off_t /*offset*/) {
-			errno = EINVAL;
-			return -1;
+		virtual _ssize_t pread(void *ptr, size_t len, off_t offset) {
+			aio::PReadCommand cmd;
+			cmd.len = len;
+			cmd.offset = offset;
+			cmd.ptr = ptr;
+			volatile int d = 0;
+			volatile int aiores = 0;
+			volatile int aioerrno = 0;
+			cmd.slot = sigc::bind(sigc::ptr_fun(aiocompleter), &d, &aiores, &aioerrno);
+			int res = pread(&cmd);
+			if (res != 0)
+				return res;
+			while(!d)
+				sched_yield();
+			errno = aioerrno;
+			return aiores;
+		}
+		virtual _ssize_t pwrite(const void *ptr, size_t len, off_t offset) {
+			aio::PWriteCommand cmd;
+			cmd.len = len;
+			cmd.offset = offset;
+			cmd.ptr = ptr;
+			volatile int d = 0;
+			volatile int aiores = 0;
+			volatile int aioerrno = 0;
+			cmd.slot = sigc::bind(sigc::ptr_fun(aiocompleter), &d, &aiores, &aioerrno);
+			int res = pwrite(&cmd);
+			if (res != 0)
+				return res;
+			while(!d)
+				sched_yield();
+			errno = aioerrno;
+			return aiores;
 		}
 		virtual _ssize_t pread(aio::PReadCommand * /*command*/) {
 			errno = EINVAL;
