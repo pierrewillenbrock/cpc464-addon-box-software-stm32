@@ -41,7 +41,7 @@ Control *Container::getNextControl(Direction dir, Control *refctl,
   //Tab order is just LTR, for now, but needs something more explicit,
   //like a tab order field.
   SubControl *next = NULL;
-  Rect next_r;
+  Rect next_r = {0,0,0,0};
   //if refctl is not a SubControl, it is outside of us anyway, thus we need
   //to behave the same as if it is NULL.
   SubControl *ref = dynamic_cast<SubControl*>(refctl);

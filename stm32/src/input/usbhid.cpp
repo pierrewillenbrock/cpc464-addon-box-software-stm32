@@ -411,6 +411,7 @@ void USBHIDDev::parseReportDescriptor(uint8_t *data, size_t size) {
 			case 1:	dataSize = 1; break;
 			case 2:	dataSize = 2; break;
 			case 3:	dataSize = 4; break;
+			default: __builtin_unreachable(); break;
 			}
 			unsigned tagType = opcode & 0xfc;
 			data ++;
