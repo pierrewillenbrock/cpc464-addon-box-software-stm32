@@ -10,15 +10,16 @@ struct OTG_Host_Channel_TypeDef;
 namespace usb {
 	struct Channel {
 	private:
-		enum State { Unused,
-			TXWait, TXResult, DisablingTX, TXWaitSOF,
-			RXWait, RXWaitSOF,
-			CtlSetupTXWait, CtlSetupTXResult, DisablingCtlSetupTX, CtlSetupTXWaitSOF,
-			CtlDataTXWait, CtlDataTXResult, DisablingCtlDataTX, CtlDataTXWaitSOF,
-			CtlDataRXWait, DisablingCtlDataRX, CtlDataRXWaitSOF,
-			CtlStatusTXWait, CtlStatusTXResult, DisablingCtlStatusTX, CtlStatusTXWaitSOF,
-			CtlStatusRXWait, DisablingCtlStatusRX, CtlStatusRXWaitSOF,
-			Disabling
+		enum State {
+			Unused,               // transfer.state == Idle
+			TX,                   // transfer.state == Wait or Result or Idle or Disabling
+			RX,                   // transfer.state == Wait or Result or Idle
+			CtlSetupTX,           // transfer.state == Wait or Result or Idle or Disabling
+			CtlDataTX,            // transfer.state == Wait or Result or Idle or Disabling
+			CtlDataRX,            // transfer.state == Wait or Result or Idle or Disabling
+			CtlStatusTX,          // transfer.state == Wait or Result or Idle or Disabling
+			CtlStatusRX,          // transfer.state == Wait or Result or Idle or Disabling
+			Disabling             // transfer.state == Disabling
 		};
 		enum State state;
 		struct Transfer {
@@ -57,6 +58,8 @@ namespace usb {
 		void finishReadTransfer();
 		void completeCurrentURB(int resultcode, URB::USBResult usbresult);
 		void cancelTransfer();
+		void update_data_urb_from_transfer_data_handled();
+		void setupPacket();
 	public:
 		Channel (unsigned index);
 		void setupForURB( URB *u);
