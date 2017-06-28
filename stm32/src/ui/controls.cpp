@@ -3,6 +3,41 @@
 
 using namespace ui;
 
+ui::Palette ui::palette = {
+  .window = {15, 1},
+  .hint = {15, 1},
+  .menu = {15, 1},
+  .menu_selected = {11, 1},
+  .notify = {15, 1},
+  .input_normal = {11, 1},
+  .input_cursor = {11, 1},
+  .input_selection = {11, 1},
+  .input_navigate = {15, 1},
+  .input_navigate_cursor = {15, 1},
+  .input_navigate_selection = {15, 1},
+  .input_selected = {11, 1},
+  .input_selected_cursor = {15, 1},
+  .input_selected_selection = {11, 1},
+  .listbox_background = {11, 1},
+  .listbox_item = {11, 1},
+  .listbox_selection = {15, 1},
+  .listbox_navigate_background = {15, 1},
+  .listbox_navigate_item = {15, 1},
+  .listbox_navigate_selection = {15, 1},
+  .listbox_selected_background = {11, 1},
+  .listbox_selected_item = {11, 1},
+  .listbox_selected_selection = {15, 1},
+  .button_normal = {15, 1},
+  .button_focus = {11, 1},
+  .button_pressed = {11, 1},
+  .button_deco = {15, 1},
+  .button_focus_deco = {11, 1},
+  .button_pressed_deco = {11, 1},
+  .scrollbar_page = {15, 1},
+  .scrollbar_pressed_page = {11, 1},
+};
+
+
 void Container::addChild(SubControl *ctl) {
   m_children.push_back(ctl);
   if (ctl->tabOrder() == ~0U)

@@ -1,5 +1,6 @@
 
 #include "hint.hpp"
+#include "controls.hpp"
 #include <fpga/font.h>
 #include <fpga/layout.h>
 
@@ -24,7 +25,8 @@ void Hint::setText(std::string const &text) {
 
   if (m_visible) {
     for(unsigned i = 0; i < m_text.size(); i++)
-      m_sprite.at(i,0) = font_get_tile(m_text[i], 15, 1);
+      m_sprite.at(i,0) = font_get_tile
+                         (m_text[i], palette.hint.sel, palette.hint.idx);
     m_sprite.updateDone();
   }
 }
@@ -35,7 +37,8 @@ void Hint::setVisible(bool visible) {
   m_visible = visible;
   if (visible) {
     for(unsigned i = 0; i < m_text.size(); i++)
-      m_sprite.at(i,0) = font_get_tile(m_text[i], 15, 1);
+      m_sprite.at(i,0) = font_get_tile
+                         (m_text[i], palette.hint.sel, palette.hint.idx);
     m_sprite.updateDone();
   }
   m_sprite.setVisible(m_visible);

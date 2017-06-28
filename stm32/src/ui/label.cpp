@@ -27,15 +27,18 @@ void Label::redraw(bool no_parent_update) {
 
   if ((int)m_text.size() <= m_width) {
     for(unsigned int i = 0; i < m_text.size(); i++) {
-      map(i,0) = font_get_tile(m_text[i], 15, 1);
+      map(i,0) = font_get_tile(m_text[i],
+                               palette.window.sel, palette.window.idx);
     }
   } else {
     //abbrev... it
     for(unsigned int i = 0; (int)i < m_width-3; i++) {
-      map(i,0) = font_get_tile(m_text[i], 15, 1);
+      map(i,0) = font_get_tile(m_text[i],
+                               palette.window.sel, palette.window.idx);
     }
     for(unsigned int i = 0; i < 3; i++) {
-      map(i+m_width-3,0) = font_get_tile('.', 15, 1);
+      map(i+m_width-3,0) = font_get_tile
+      ('.', palette.window.sel, palette.window.idx);
     }
   }
   if (!no_parent_update)

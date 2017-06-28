@@ -93,28 +93,54 @@ void ScrollBar::redraw(bool no_parent_update) {
     return;
   assert(m_parent);
 
+  PaletteEntry back, pgback, nob, pgfwd, fwd;
+  back = palette.button_deco;
+  pgback = palette.scrollbar_page;
+  nob = palette.button_deco;
+  pgfwd = palette.scrollbar_page;
+  fwd = palette.button_deco;
+  switch(m_pressed) {
+  case Back:
+    back = palette.button_pressed_deco;
+    break;
+  case PgBack:
+    pgback = palette.scrollbar_pressed_page;
+    break;
+  case Nob:
+    nob = palette.button_pressed_deco;
+    break;
+  case PgFwd:
+    pgfwd = palette.scrollbar_pressed_page;
+    break;
+  case Fwd:
+    fwd = palette.button_pressed_deco;
+    break;
+  default:
+    break;
+  }
+
   if (m_vertical) {
-    map(0, 0) = font_get_tile('^', (m_pressed==Back)?11:15, 1);
+    map(0, 0) = font_get_tile('^', back.idx, back.sel);
     for(unsigned i = 0; (int)i < (int)m_height-2; i++) {
       if (i < m_nobStart)
-	map(0, i+1) = font_get_tile(' ', (m_pressed==PgBack)?11:15, 1);
+	map(0, i+1) = font_get_tile(' ', pgback.sel, pgback.idx);
       else if (i >= m_nobStart && i < m_nobStart+m_nobSize)
-	map(0, i+1) = font_get_tile('#', (m_pressed==Nob)?15:11, 1);
+	map(0, i+1) = font_get_tile('#', nob.sel, nob.idx);
       else
-	map(0, i+1) = font_get_tile(' ', (m_pressed==PgFwd)?11:15, 1);
+	map(0, i+1) = font_get_tile(' ', pgfwd.sel, pgfwd.idx);
     }
-    map(0, m_height-1) = font_get_tile('v', (m_pressed==Fwd)?11:15, 1);
+    map(0, m_height-1) = font_get_tile('v', fwd.sel, fwd.idx);
   } else {
-    map(0, 0) = font_get_tile('<', (m_pressed==Back)?11:15, 1);
+    map(0, 0) = font_get_tile('<', back.idx, back.sel);
     for(unsigned i = 0; (int)i < (int)m_width-2; i++) {
       if (i < m_nobStart)
-	map(i+1, 0) = font_get_tile(' ', (m_pressed==PgBack)?11:15, 1);
+	map(i+1, 0) = font_get_tile(' ', pgback.sel, pgback.idx);
       else if (i >= m_nobStart && i < m_nobStart+m_nobSize)
-	map(i+1, 0) = font_get_tile('#', (m_pressed==Nob)?15:11, 1);
+	map(i+1, 0) = font_get_tile('#', nob.sel, nob.idx);
       else
-	map(i+1, 0) = font_get_tile(' ', (m_pressed==PgFwd)?11:15, 1);
+	map(i+1, 0) = font_get_tile(' ', pgfwd.sel, pgfwd.idx);
     }
-    map(m_width-1, 0) = font_get_tile('>', (m_pressed==Fwd)?11:15, 1);
+    map(m_width-1, 0) = font_get_tile('>', fwd.sel, fwd.idx);
   }
   if(!no_parent_update)
     m_parent->updatedMap();

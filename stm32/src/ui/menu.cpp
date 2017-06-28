@@ -1,5 +1,6 @@
 
 #include <fpga/font.h>
+#include "controls.hpp"
 #include "menu.hpp"
 #include <fpga/font.h>
 #include <fpga/layout.h>
@@ -35,16 +36,15 @@ void Menu::generateMap() {
   unsigned w = max_len;
   m_sprite.setSize(w,h);
   for(unsigned i = 0; i < h; i++) {
-    unsigned int pal = 15;
-    if ((int)i == highlight_item) {
-      pal = 11;
-    }
+    PaletteEntry pal = palette.menu;
+    if ((int)i == highlight_item)
+      pal = palette.menu_selected;
     std::string text = getItemText(i);
     unsigned j = 0;
     for(; j < text.size(); j++)
-      map(j, i) = font_get_tile(text[j],pal, 1);
+      map(j, i) = font_get_tile(text[j], pal.sel, pal.idx);
     for(; j < max_len; j++)
-      map(j, i) = font_get_tile(' ',pal, 1);
+      map(j, i) = font_get_tile(' ', pal.sel, pal.idx);
   }
   m_sprite.updateDone();
   unsigned x = m_position.x;

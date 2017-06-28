@@ -12,6 +12,48 @@
 #include <sigc++/sigc++.h>
 
 namespace ui {
+
+struct PaletteEntry {
+  uint8_t sel:4;
+  uint8_t idx:4;
+};
+
+struct Palette { //these always specify fore- and background at the same time.
+  PaletteEntry window;
+  PaletteEntry hint;
+  PaletteEntry menu;
+  PaletteEntry menu_selected;
+  PaletteEntry notify;
+  PaletteEntry input_normal;
+  PaletteEntry input_cursor;
+  PaletteEntry input_selection;
+  PaletteEntry input_navigate;
+  PaletteEntry input_navigate_cursor;
+  PaletteEntry input_navigate_selection;
+  PaletteEntry input_selected;
+  PaletteEntry input_selected_cursor;
+  PaletteEntry input_selected_selection;
+  PaletteEntry listbox_background;
+  PaletteEntry listbox_item;
+  PaletteEntry listbox_selection;
+  PaletteEntry listbox_navigate_background;
+  PaletteEntry listbox_navigate_item;
+  PaletteEntry listbox_navigate_selection;
+  PaletteEntry listbox_selected_background;
+  PaletteEntry listbox_selected_item;
+  PaletteEntry listbox_selected_selection;
+  PaletteEntry button_normal;
+  PaletteEntry button_focus;
+  PaletteEntry button_pressed;
+  PaletteEntry button_deco;
+  PaletteEntry button_focus_deco;
+  PaletteEntry button_pressed_deco;
+  PaletteEntry scrollbar_page;
+  PaletteEntry scrollbar_pressed_page;
+};
+
+extern Palette palette;
+
 class SubControl;
 
 class Container : public virtual MappedControl {

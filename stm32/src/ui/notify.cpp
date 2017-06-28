@@ -7,6 +7,7 @@
 #include <deferredwork.hpp>
 #include <timer.hpp>
 #include <ui/icons.hpp>
+#include "controls.hpp"
 
 using namespace ui;
 
@@ -43,7 +44,8 @@ static void Notify_Resize() {
 		ui::screen.rect().y + ui::screen.rect().height-h*8-24);
 	notify_sprite.setSize(w,h);
 
-	uint32_t empty_tile = font_get_tile(' ',15, 1);
+	uint32_t empty_tile = font_get_tile(' ', palette.notify.sel,
+	                                    palette.notify.idx);
 	for(unsigned y = 0; y < h; y++)
 		for(unsigned x = 0; x < w; x++)
 			notify_sprite.at(x,y) = empty_tile;
@@ -52,7 +54,9 @@ static void Notify_Resize() {
 			notify_sprite.at(0,i) = notify_list[i].icon->def_map;
 		for(unsigned j = 0; j < notify_list[i].message.size(); j++) {
 			notify_sprite.at(j+1,i) =
-				font_get_tile(notify_list[i].message[j],15,1);
+			        font_get_tile(notify_list[i].message[j],
+			                      palette.notify.sel,
+			                      palette.notify.idx);
 		}
 	}
 

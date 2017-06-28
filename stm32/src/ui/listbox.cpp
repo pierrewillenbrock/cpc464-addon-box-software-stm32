@@ -83,7 +83,25 @@ void ListBox::redraw(bool no_parent_update) {
   unsigned rows = m_scrollbar.visible()?m_height-1:m_height;
   unsigned position = m_scrollbar.visible()?m_scrollbar.position():0;
 
-  unsigned bgpal = (m_focusMode == Navigate)?15:11;
+  PaletteEntry bgpal, item, selection;
+  switch(m_focusMode) {
+  default:
+  case NotFocused:
+    bgpal = palette.listbox_background;
+    item = palette.listbox_item;
+    selection = palette.listbox_selection;
+    break;
+  case Navigate:
+    bgpal = palette.listbox_navigate_background;
+    item = palette.listbox_navigate_item;
+    selection = palette.listbox_navigate_selection;
+    break;
+  case Select:
+    bgpal = palette.listbox_selected_background;
+    item = palette.listbox_selected_item;
+    selection = palette.listbox_selected_selection;
+    break;
+  }
   int x = -position;
   for(unsigned c = 0; c < (m_items.size()+rows-1)/rows; c++) {
     unsigned w = 0;
@@ -95,23 +113,23 @@ void ListBox::redraw(bool no_parent_update) {
     w++;
     for(unsigned r = 0; r < rows && r+c*rows < m_items.size(); r++) {
       Item &it = m_items[r+c*rows];
+      PaletteEntry pal = ((int)(r+c*rows) == m_selected)?selection:item;
       bool highlight = ((int)(r+c*rows) == m_selected) ||
                        m_focusMode == Navigate;
-      unsigned pal = highlight?15:11;
       if (x >= 0) {
 	if (it.icon)
 	  map(x,r) = highlight?it.icon->sel_map:it.icon->def_map;
 	else
-	  map(x,r) = font_get_tile(' ',bgpal, 1);
+	  map(x,r) = font_get_tile(' ', bgpal.sel, bgpal.idx);
       }
       if (x+1 + it.text.size() > 0) {
 	for(int i = 0; i < (int)it.text.size(); i++) {
 	  if (x+i+1 >= 0 && x+i+1 < m_width)
-	    map(x+i+1, r) = font_get_tile(it.text[i],pal, 1);
+	    map(x+i+1, r) = font_get_tile(it.text[i], pal.sel, pal.idx);
 	}
 	for(int i = it.text.size()+1; i < (int)w; i++) {
 	  if (x+i >= 0 && x+i < m_width)
-	    map(x+i, r) = font_get_tile(' ',bgpal, 1);
+	    map(x+i, r) = font_get_tile(' ', bgpal.sel, bgpal.idx);
 	}
       }
     }
@@ -119,7 +137,7 @@ void ListBox::redraw(bool no_parent_update) {
       for(unsigned r = m_items.size()-c*rows; r < rows; r++) {
 	for(int i = 0; i < (int)w; i++) {
 	  if (x+i >= 0 && x+i < m_width)
-	    map(x+i, r) = font_get_tile(' ',bgpal, 1);
+	    map(x+i, r) = font_get_tile(' ', bgpal.sel, bgpal.idx);
 	}
       }
     }
@@ -130,7 +148,7 @@ void ListBox::redraw(bool no_parent_update) {
   if (x < m_width) {
     for(unsigned r = 0; r < rows; r++) {
       for(unsigned int i = x; i < m_width; i++) {
-	map(i, r) = font_get_tile(' ',bgpal, 1);
+	map(i, r) = font_get_tile(' ', bgpal.sel, bgpal.idx);
       }
     }
   }

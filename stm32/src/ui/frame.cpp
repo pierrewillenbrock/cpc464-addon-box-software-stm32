@@ -29,7 +29,8 @@ Rect Frame::getGlobalRect() {
 void Frame::fullRedraw() {
   if (!m_visible)
     return;
-  uint32_t empty_tile = font_get_tile(' ',15, 1);
+  uint32_t empty_tile = font_get_tile
+                        (' ', palette.window.sel, palette.window.idx);
   for(unsigned y = 0; y < m_height; y++)
     for(unsigned x = 0; x < m_width; x++)
       map(x,y) = empty_tile;

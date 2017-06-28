@@ -82,6 +82,25 @@ void Input::redraw(bool no_parent_update) {
     return;
   assert(m_parent);
   unsigned txt_width = (m_flags & Numeric)?m_width-1:m_width;
+  PaletteEntry text, cursor, selection;
+  switch(m_focusMode) {
+  default:
+  case NotFocused:
+    text = palette.input_normal;
+    cursor = palette.input_cursor;
+    selection = palette.input_selection;
+    break;
+  case Navigate:
+    text = palette.input_navigate;
+    cursor = palette.input_navigate_cursor;
+    selection = palette.input_navigate_selection;
+    break;
+  case Select:
+    text = palette.input_selected;
+    cursor = palette.input_selected_cursor;
+    selection = palette.input_selected_selection;
+    break;
+  }
   //left align
   for(unsigned int i = m_scroll;
       i-m_scroll < txt_width && i <= m_text.size(); i++) {
@@ -90,18 +109,13 @@ void Input::redraw(bool no_parent_update) {
       c = m_text[i];
     else
       c = ' ';
-    if ((m_focusMode == Select && m_cursor == i) || m_focusMode == Navigate)
-      map(i-m_scroll, 0) = font_get_tile(c, 15, 1);
+    if(m_cursor == i)
+      map(i-m_scroll, 0) = font_get_tile(c, cursor.sel, cursor.idx);
     else
-      map(i-m_scroll, 0) = font_get_tile(c, 11, 1);
+      map(i-m_scroll, 0) = font_get_tile(c, text.sel, text.idx);
   }
-  if (m_focusMode == Navigate) {
-    for(unsigned int i = m_text.size()+1-m_scroll; i < txt_width; i++)
-      map(i, 0) = font_get_tile(' ', 15, 1);
-  } else {
-    for(unsigned int i = m_text.size()+1-m_scroll; i < txt_width; i++)
-      map(i, 0) = font_get_tile(' ', 11, 1);
-  }
+  for(unsigned int i = m_text.size()+1-m_scroll; i < txt_width; i++)
+    map(i, 0) = font_get_tile(' ', text.sel, text.idx);
   if ((m_flags & Numeric) && m_updownicon) {
     if (((m_pressed == Up || m_pressed == Down) && m_mouseOver) ||
       m_focusMode == Navigate)
