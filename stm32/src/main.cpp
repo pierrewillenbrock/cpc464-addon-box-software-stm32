@@ -395,17 +395,22 @@ int main()
 	font_upload();
 
 	{
-	  uint8_t font_palette11[16] = {6, 10,0,0,//dark blue on yellow
-					8, 1, 0,0,//black on white
-					1, 8, 0,0,//white on black
-	  };
-	  uint8_t font_palette15[16] = {10, 6,0,0,//yellow on dark blue
-					1, 8, 0,0,//white on black
-					8, 1, 0,0,//black on white
-	  };
-	  sprite_set_palette(11, font_palette11);
-	  sprite_set_palette(15, font_palette15);
-	  sprite_upload_palette();
+		// palette #0, #1, #2, #8, #9, #10, #12 are used by iconbar.
+		// plenty of 4 color palettes for use with 1 bit and 2 bit tiles.
+		//                      0(bg) (1)fg 2 3
+		uint8_t font_palette14[16] = {10,  8,  0,  0, //white on dark blue
+		                               0,  0,  0,  0,
+		                               0,  0,  0,  0,
+		                               0,  0,  0,  0,
+		                             };
+		uint8_t font_palette15[16] = {10,  6,  0,  0, //yellow on dark blue
+		                               1,  8,  0,  0, //white on black
+		                               8,  1,  0,  0, //black on white
+		                               9,  1,  0,  0, //black on gray
+		                             };
+		sprite_set_palette(14, font_palette14);
+		sprite_set_palette(15, font_palette15);
+		sprite_upload_palette();
 	}
 
 	//for the benefit of the ui things

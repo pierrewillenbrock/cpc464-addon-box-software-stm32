@@ -97,7 +97,7 @@ void Icons::allocateIcon(Icon const *icon) {
 	  ti.addr = sprite_alloc_vmem(0x10, 0x10, ~0U);
 	ti.assigned[i] = iconno;
 	ti.dirty = true;
-	m_icons[iconno].def_map = (1 << 21) | (11 << 17) | 0x10000 | ((ti.addr & 0x7f0) >> 2) | i;
+	m_icons[iconno].def_map = (2 << 21) | (15 << 17) | 0x10000 | ((ti.addr & 0x7f0) >> 2) | i;
 	m_icons[iconno].sel_map = (1 << 21) | (15 << 17) | 0x10000 | ((ti.addr & 0x7f0) >> 2) | i;
 	icons.checkTiles();
 	return;

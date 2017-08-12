@@ -13,11 +13,6 @@
 
 namespace ui {
 
-struct PaletteEntry {
-  uint8_t sel:4;
-  uint8_t idx:4;
-};
-
 struct Palette { //these always specify fore- and background at the same time.
   PaletteEntry window;
   PaletteEntry hint;

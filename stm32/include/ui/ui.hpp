@@ -20,6 +20,10 @@ struct Rect {
   uint16_t width;
   uint16_t height;
 };
+struct PaletteEntry {
+  uint8_t sel:4;
+  uint8_t idx:4;
+};
 struct MouseState {
   uint16_t x;
   uint16_t y;
