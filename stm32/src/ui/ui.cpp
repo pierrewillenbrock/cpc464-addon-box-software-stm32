@@ -95,6 +95,11 @@
 
 #include <ui/ui.hpp>
 
+#include <fpga/font.h>
+
+#include <wchar.h>
+#include <string.h>
+
 namespace ui {
   static Control *toplevel = NULL;
   static Control *current_inputfocus = NULL; //shared with joystick
@@ -135,6 +140,23 @@ void Screen::setRect(Rect const &rect) {
 
 void Screen::setOptions(Options const &options) {
   m_options = options;
+}
+
+void ui::MappedControl::drawString(unsigned int x, unsigned int y, std::string const & str, ui::PaletteEntry pal, size_t maxlen) {
+  size_t pos = 0;
+  size_t size = str.size();
+  mbstate_t ps;
+  memset(&ps, 0, sizeof(ps));
+  while(pos < size && maxlen > 0) {
+    wchar_t wc;
+    ssize_t clen = mbrtowc(&wc, &str[pos], size-pos, &ps);
+    if (clen <= 0)
+      break;
+    map(x,y) = font_get_tile(wc, pal.sel, pal.idx);
+    pos += clen;
+    x++;
+    maxlen--;
+  }
 }
 
 void UI_mouseMove(uint16_t x, uint16_t y, int16_t dx, int16_t dy) {

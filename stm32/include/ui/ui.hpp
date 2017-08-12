@@ -108,6 +108,8 @@ class MappedControl : public Control {
 protected:
   virtual uint32_t const &map(unsigned x, unsigned y) const = 0;
   virtual uint32_t &map(unsigned x, unsigned y) = 0;
+
+  void drawString(unsigned x, unsigned y, std::string const &str, PaletteEntry pal, size_t maxlen = ~0U);
 };
 class Screen {
 public:

@@ -2,6 +2,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <wchar.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -17,11 +18,12 @@ extern "C" {
  */
 
 extern uint16_t font_tile_base;
-static inline uint32_t font_get_tile(char c, uint8_t pal_sel, uint8_t pal_idx) {
-  if (c < 0x20 || c >= 0x80) {
-    c = 0x7f;
+uint32_t _font_find_tile(wchar_t wc);
+static inline uint32_t font_get_tile(wchar_t wc, uint8_t pal_sel, uint8_t pal_idx) {
+  if (wc < 0x20 || wc >= 0x80) {
+    wc = _font_find_tile(wc);
   }
-  uint16_t tile = c;
+  uint16_t tile = wc;
   tile += font_tile_base * 4;
   return (pal_idx << 21) | (pal_sel << 17) | 0x10000 |
     tile;

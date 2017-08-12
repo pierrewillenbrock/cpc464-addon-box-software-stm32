@@ -1,5 +1,6 @@
 
 #include "lang.hpp"
+#include <string.h>
 
 using namespace lang;
 
@@ -49,3 +50,18 @@ std::string lang::elide(std::string const &str, size_t len, enum ElideMode mode)
 	}
 }
 
+size_t lang::mbstrlen(std::string const & str){
+	size_t pos = 0;
+	size_t size = str.size();
+	mbstate_t ps;
+	memset(&ps, 0, sizeof(ps));
+	size_t len = 0;
+	while(pos < size) {
+		ssize_t clen = mbrlen(&str[pos], size-pos, &ps);
+		if(clen <= 0)
+			break;
+		pos += clen;
+		len++;
+	}
+	return len;
+}

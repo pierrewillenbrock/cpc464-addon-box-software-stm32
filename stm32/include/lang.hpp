@@ -15,4 +15,6 @@ enum ElideMode {
 
 std::string elide(std::string const &str, size_t len, enum ElideMode mode = ElideMiddle);
 
+size_t mbstrlen(std::string const & str);
+
 }
