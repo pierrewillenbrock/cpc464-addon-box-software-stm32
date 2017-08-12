@@ -226,6 +226,8 @@ void ListBox::mouseDown(uint8_t button, MouseState mousestate) {
   //find the selected item
   Rect r = getGlobalRect();
   if (button == 0 && mousestate.buttons == 1) {
+    UI_setFocus(this);
+    m_focusMode = Select;//for mouse clicks, we don't go through Navigate
     int item = itemAt((mousestate.x - r.x)/8, (mousestate.y - r.y)/8);
     if (m_selected != item) {
       dblclick_state = Idle;
@@ -321,16 +323,25 @@ void ListBox::joyTrgDown(JoyTrg trg, JoyState state) {
 void ListBox::joyTrgUp(JoyTrg trg, JoyState state) {
   switch(trg) {
   case JoyTrg::Btn1:
-    if (m_selected != -1)
-      m_onDblClick(m_selected);
+    switch(m_focusMode) {
+    case Navigate:
+      m_focusMode = Select;
+      redraw();
+      break;
+    case Select:
+      if(m_selected != -1)
+        m_onDblClick(m_selected);
+      break;
+    default:
+      break;
+    }
     break;
   //select current item
   case JoyTrg::Btn2:
-    if(m_focusMode == Navigate)
-      m_focusMode = Select;
-    else if (m_focusMode == Select)
+    if (m_focusMode == Select) {
       m_focusMode = Navigate;
-    redraw();
+      redraw();
+    }
     break;
   default:
     Control::joyTrgUp(trg, state);

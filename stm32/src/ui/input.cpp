@@ -148,8 +148,9 @@ void Input::mouseDown(uint8_t button, MouseState mousestate) {
   }
 
   if (button == 0 && mousestate.buttons == 1) {
-    if (r.x <= 8 + mousestate.x && (m_flags & Numeric)) {
-      //todo: move key input focus to this control
+    UI_setFocus(this);
+    m_focusMode = Select;
+    if (r.x+r.width-8 <= mousestate.x && (m_flags & Numeric)) {
       if (mousestate.y < r.y + 4)
 	m_pressed = Up;
       else
@@ -161,8 +162,8 @@ void Input::mouseDown(uint8_t button, MouseState mousestate) {
         m_pressedTimer = Timer_Oneshot(500000, sigc::mem_fun(this, &Input::pressedTimer));
       }
     } else {
-      //click in the remaining area: move input focus here and set the cursor
-      //position. todo
+      //click in the remaining area: set the cursor position
+      m_cursor = (mousestate.x-r.x)/8+m_scroll;
       redraw();
     }
   }
@@ -293,15 +294,23 @@ void Input::joyTrgDown(JoyTrg trg, JoyState state) {
 void Input::joyTrgUp(JoyTrg trg, JoyState state) {
   switch(trg) {
   case JoyTrg::Btn1:
-    //bring up/hide keyboard/numpad
+    switch(m_focusMode) {
+    case Navigate:
+      m_focusMode = Select;
+      redraw();
+    case Select:
+      //bring up keyboard/numpad
+      break;
+    default:
+      break;
+    }
     break;
   case JoyTrg::Btn2:
-    if (m_focusMode == Select)
+    if(m_focusMode == Select) {
       m_focusMode = Navigate;
-    else if (m_focusMode == Navigate)
-      m_focusMode = Select;
-    redraw();
-   break;
+      redraw();
+    }
+    break;
   default:
     if (m_focusMode == Navigate)
       Control::joyTrgUp(trg, state);
@@ -312,20 +321,16 @@ void Input::joyTrgUp(JoyTrg trg, JoyState state) {
 void Input::joyAxis(JoyState state) {
   if (m_focusMode == Select && (m_flags & Numeric)) {
     if(state.y > 64) {
-      if (state.y < 128) {
-        float ch = powf(2,6-logf(128-state.y)/logf(2));
-        m_joyChange = -ch;
-      } else
-        m_joyChange = -64;
+      float ch = powf(2,6-logf(128-state.y)/logf(2));
+      m_joyChange = -ch;
       if(!m_pressedTimer) {
         doValueChange();
         m_pressedTimer = Timer_Oneshot(500000, sigc::mem_fun(this, &Input::pressedTimer));
       }
     } else if(state.y < -64) {
-      if (state.y > -128) {
-        float ch = powf(2,6-logf(128+state.y)/logf(2));
-        m_joyChange = ch;
-      } else
+      float ch = powf(2,6-logf(128+state.y)/logf(2));
+      m_joyChange = ch;
+      if (state.y <= -128)
         m_joyChange = 64;
       if(!m_pressedTimer) {
         doValueChange();
