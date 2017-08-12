@@ -1,8 +1,53 @@
 
-Parts of this software are licensed under ARM 3-Clause BSD.
-Parts of this software are licensed under
-   MCD-ST Liberty SW License Agreement V2. This licence is a
-   3-Clause BSD licence with additional restrictions: The
-   code can be used only on ST microcontrollers.
+If not noted otherwise in the files or a note in the subdirectories, the code
+in this directory and its subdirectory is licensed as follows:
 
-The rest is still undecided, so all rights reserved.
+==============================================================================
+Copyright (c) 2017, Pierre Willenbrock
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+==============================================================================
+
+A possibly incomplete list of exceptions can be found below:
+
+include/bsp/core_cm4.h
+include/bsp/core_cm4_simd.h
+include/bsp/core_cmFunc.h
+include/bsp/core_cmInstr.h
+   ARMs 3-Clause BSD.
+
+include/bsp/<others>
+src/bsp/
+   MCD-ST Liberty SW License Agreement V2. This licence is a 3-Clause BSD
+   licence with an additional restriction: The code can be used only on
+   ST microcontrollers. This is not much of a restriction, since this code
+   is only usable on ST microcontrollers.
+
+ext/libsigc++-2.10.0/
+  GNU LESSER GENERAL PUBLIC LICENSE
+  Version 2.1, February 1999
+
+Be aware that you are probably not allowed to distribute binaries of this
+source code because the MCD-ST Liberty SW Licence is probably not compatible
+with LGPL due to the additional restriction.
+
+
